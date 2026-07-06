@@ -1,0 +1,361 @@
+syntax = "proto3";
+
+package commandcenter;
+
+// Service definition for Command Center
+service CommandCenterService {
+  // Requirement expansion
+  rpc ExpandRequirement(ExpandRequirementRequest) returns (ExpandRequirementResponse);
+
+  // Security context scoping
+  rpc ScopeContext(ScopeContextRequest) returns (ScopeContextResponse);
+
+  // Vault storage
+  rpc StoreInteraction(StoreInteractionRequest) returns (StoreInteractionResponse);
+
+  // Traceability queries
+  rpc GetTraceability(GetTraceabilityRequest) returns (GetTraceabilityResponse);
+
+  // Development metrics
+  rpc GetMetrics(GetMetricsRequest) returns (GetMetricsResponse);
+
+  // Knowledge graph operations
+  rpc CreateRequirement(CreateRequirementRequest) returns (CreateRequirementResponse);
+  rpc CreateSpecification(CreateSpecificationRequest) returns (CreateSpecificationResponse);
+  rpc CreateCodeArtifact(CreateCodeArtifactRequest) returns (CreateCodeArtifactResponse);
+  rpc CreateTest(CreateTestRequest) returns (CreateTestResponse);
+  rpc CreateDeployment(CreateDeploymentRequest) returns (CreateDeploymentResponse);
+}
+
+// Messages for requirement expansion
+message ExpandRequirementRequest {
+  string requirement = 1;
+  ExpansionContext context = 2;
+}
+
+message ExpansionContext {
+  string company_id = 1;
+  string user_id = 2;
+  string stack_profile = 3;
+  string industry = 4;
+  repeated string compliance_requirements = 5;
+  repeated string tech_stack = 6;
+}
+
+message ExpandRequirementResponse {
+  StructuredRequirement structured = 1;
+  repeated EdgeCase edge_cases = 2;
+  repeated SecurityRequirement security_requirements = 3;
+  PerformanceRequirements performance_requirements = 4;
+  repeated AcceptanceCriteria acceptance_criteria = 5;
+  TestScenarios test_scenarios = 6;
+  Dependencies dependencies = 7;
+  repeated Risk risks = 8;
+  EstimatedEffort estimated_effort = 9;
+}
+
+message StructuredRequirement {
+  string title = 1;
+  string description = 2;
+  repeated string functional_requirements = 3;
+  repeated string non_functional_requirements = 4;
+  repeated string actors = 5;
+  repeated string preconditions = 6;
+  repeated string postconditions = 7;
+}
+
+message EdgeCase {
+  string category = 1;
+  string scenario = 2;
+  string description = 3;
+  string expected_behavior = 4;
+  string priority = 5;
+}
+
+message SecurityRequirement {
+  string requirement = 1;
+  string category = 2;
+  string priority = 3;
+}
+
+message PerformanceRequirements {
+  APIPerformance api = 1;
+  DatabasePerformance database = 2;
+  FrontendPerformance frontend = 3;
+}
+
+message APIPerformance {
+  string response_time = 1;
+  string throughput = 2;
+  string error_rate = 3;
+  string availability = 4;
+}
+
+message DatabasePerformance {
+  string query_time = 1;
+  string connection_pool = 2;
+  string indexing = 3;
+  string caching = 4;
+}
+
+message FrontendPerformance {
+  string initial_load = 1;
+  string interaction_delay = 2;
+  string bundle_size = 3;
+  string lighthouse = 4;
+}
+
+message AcceptanceCriteria {
+  string given = 1;
+  string when = 2;
+  string then = 3;
+}
+
+message TestScenarios {
+  repeated TestScenario unit = 1;
+  repeated TestScenario integration = 2;
+  repeated TestScenario e2e = 3;
+  repeated TestScenario performance = 4;
+  repeated TestScenario security = 5;
+}
+
+message TestScenario {
+  string name = 1;
+  string type = 2;
+}
+
+message Dependencies {
+  repeated string internal = 1;
+  repeated string external = 2;
+  repeated string data = 3;
+  repeated string infrastructure = 4;
+}
+
+message Risk {
+  string type = 1;
+  string description = 2;
+  string severity = 3;
+  string mitigation = 4;
+}
+
+message EstimatedEffort {
+  int32 story_points = 1;
+  float development_days = 2;
+  string confidence = 3;
+}
+
+// Messages for security context scoping
+message ScopeContextRequest {
+  string company_id = 1;
+  string content = 2;
+  string operation = 3;
+}
+
+message ScopeContextResponse {
+  string scoped_content = 1;
+  int32 original_length = 2;
+  int32 scoped_length = 3;
+  int32 redaction_count = 4;
+  bool pii_detected = 5;
+  int32 business_terms_redacted = 6;
+  repeated string warnings = 7;
+}
+
+// Messages for vault storage
+message StoreInteractionRequest {
+  string request_id = 1;
+  string company_id = 2;
+  string user_id = 3;
+  string prompt = 4;
+  string response = 5;
+  string operation = 6;
+  string model = 7;
+  TokenUsage token_usage = 8;
+  float cost = 9;
+  SecurityMetadata security = 10;
+}
+
+message TokenUsage {
+  int32 prompt_tokens = 1;
+  int32 completion_tokens = 2;
+  int32 total_tokens = 3;
+}
+
+message SecurityMetadata {
+  string scoping_level = 1;
+  bool pii_detected = 2;
+  int32 redaction_count = 3;
+  string data_classification = 4;
+}
+
+message StoreInteractionResponse {
+  string id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+// Messages for traceability
+message GetTraceabilityRequest {
+  string requirement_id = 1;
+}
+
+message GetTraceabilityResponse {
+  Requirement requirement = 1;
+  Specification specification = 2;
+  repeated Code code = 3;
+  repeated Test tests = 4;
+  repeated Deployment deployments = 5;
+}
+
+message Requirement {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string status = 4;
+  string priority = 5;
+  string category = 6;
+  string company_id = 7;
+  string created_by = 8;
+  int64 created_at = 9;
+}
+
+message Specification {
+  string id = 1;
+  string title = 2;
+  string content = 3;
+  string status = 4;
+  int32 version = 5;
+  int64 created_at = 6;
+}
+
+message Code {
+  string id = 1;
+  string file_path = 2;
+  string function_name = 3;
+  string language = 4;
+  int32 lines_of_code = 5;
+  string commit_hash = 6;
+  string author = 7;
+  int64 created_at = 8;
+}
+
+message Test {
+  string id = 1;
+  string name = 2;
+  string type = 3;
+  string status = 4;
+  float coverage = 5;
+  int32 duration = 6;
+  string test_file = 7;
+  int64 created_at = 8;
+}
+
+message Deployment {
+  string id = 1;
+  string version = 2;
+  string environment = 3;
+  string status = 4;
+  string deployed_by = 5;
+  int64 deployed_at = 6;
+  string rollback_version = 7;
+}
+
+// Messages for metrics
+message GetMetricsRequest {
+  string company_id = 1;
+  int64 start_date = 2;
+  int64 end_date = 3;
+}
+
+message GetMetricsResponse {
+  Period period = 1;
+  RequirementMetrics requirements = 2;
+  int32 specifications = 3;
+  int32 code = 4;
+  TestMetrics tests = 5;
+  DeploymentMetrics deployments = 6;
+}
+
+message Period {
+  int64 start_date = 1;
+  int64 end_date = 2;
+}
+
+message RequirementMetrics {
+  int32 total = 1;
+  int32 completed = 2;
+}
+
+message TestMetrics {
+  int32 total = 1;
+  int32 passed = 2;
+  float average_coverage = 3;
+  float avg_unit_test_duration = 4;
+}
+
+message DeploymentMetrics {
+  int32 total = 1;
+  int32 successful = 2;
+}
+
+// Messages for knowledge graph node creation
+message CreateRequirementRequest {
+  string id = 1;
+  string title = 2;
+  string description = 3;
+  string status = 4;
+  string priority = 5;
+  string category = 6;
+  string company_id = 7;
+  string created_by = 8;
+}
+
+message CreateRequirementResponse {
+  Requirement requirement = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message CreateSpecificationRequest {
+  string requirement_id = 1;
+  Specification specification = 2;
+}
+
+message CreateSpecificationResponse {
+  Specification specification = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message CreateCodeArtifactRequest {
+  string specification_id = 1;
+  Code code = 2;
+}
+
+message CreateCodeArtifactResponse {
+  Code code = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message CreateTestRequest {
+  string code_id = 1;
+  Test test = 2;
+}
+
+message CreateTestResponse {
+  Test test = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+message CreateDeploymentRequest {
+  repeated string code_ids = 1;
+  Deployment deployment = 2;
+}
+
+message CreateDeploymentResponse {
+  Deployment deployment = 1;
+  bool success = 2;
+  string error = 3;
+}
