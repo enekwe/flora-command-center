@@ -39,7 +39,7 @@ const logger = winston.createLogger({
 
 // Create Express app
 const app = express();
-const PORT = process.env.PORT || 4000;
+const PORT = process.env.PORT || 3015;
 
 // Configure CORS properly
 const corsOrigins = process.env.CORS_ORIGIN
@@ -95,6 +95,17 @@ app.post('/graphql', (req, res) => {
     query: req.body.query
   });
 });
+
+// Integration routes
+const slackRoutes = require('./integrations/slack/routes');
+const gmailRoutes = require('./integrations/gmail/routes');
+const commandCenterRoutes = require('./routes/commandCenterRoutes');
+
+app.use('/api/integrations/slack', slackRoutes);
+app.use('/api/integrations/gmail', gmailRoutes);
+app.use('/api/command-center', commandCenterRoutes);
+
+logger.info('Slack, Gmail, and Command Center routes mounted');
 
 // Database connections (with proper error handling)
 const connectDatabases = async () => {
