@@ -10,7 +10,17 @@
 
 const fs = require('fs').promises;
 const path = require('path');
-const { getPAL } = require('./providerAbstractionLayer');
+
+// PAL is optional - only needed for AI-powered distillation
+// Most context optimization features work without it
+let getPAL = null;
+try {
+  const pal = require('./providerAbstractionLayer');
+  getPAL = pal.getPAL;
+} catch (error) {
+  console.warn('PAL not available - AI-powered distillation disabled');
+  console.warn('Context optimization will still work for non-AI features');
+}
 
 class ContextOptimizationService {
   constructor() {
@@ -23,8 +33,13 @@ class ContextOptimizationService {
   async initialize() {
     if (this.initialized) return;
 
-    this.pal = getPAL();
-    await this.pal.initialize();
+    if (getPAL) {
+      this.pal = getPAL();
+      await this.pal.initialize();
+    } else {
+      console.warn('Initializing Context Optimization Service without PAL');
+      this.pal = null;
+    }
     this.initialized = true;
   }
 
@@ -59,6 +74,14 @@ class ContextOptimizationService {
    */
   async distillChat(chatHistory, provider = 'qwen') {
     await this.ensureInitialized();
+
+    if (!this.pal) {
+      throw new Error(
+        'PAL (Provider Abstraction Layer) is not available. ' +
+        'AI-powered chat distillation requires PAL to be configured. ' +
+        'Please ensure providerAbstractionLayer.js and its dependencies are installed.'
+      );
+    }
 
     // Build context from chat history
     const chatText = chatHistory
