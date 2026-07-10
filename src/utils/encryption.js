@@ -12,7 +12,9 @@ class EncryptionService {
 
     if (!this.encryptionKey) {
       console.warn('ENCRYPTION_KEY not set - using development key (NOT FOR PRODUCTION)');
-      this.encryptionKey = 'dev-key-1234567890abcdef1234567890abcdef'; // 32 chars for AES-256
+      // Generate a valid 32-byte development key (64 hex characters)
+      // This is ONLY for development/testing - NEVER use in production
+      this.encryptionKey = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'; // 64 hex chars
     }
 
     // Convert to buffer if it's a hex string
