@@ -145,5 +145,24 @@ module.exports = {
     workspaceServiceUrl: process.env.WORKSPACE_SERVICE_URL || 'http://localhost:4001',
     authServiceUrl: process.env.AUTH_SERVICE_URL || 'http://localhost:4002',
     notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:4003'
-  }
+  },
+
+  // RBAC Permissions (required by User model)
+  PERMISSIONS: {
+    'read:command-center': ['admin', 'gp', 'analyst'],
+    'write:command-center': ['admin', 'gp'],
+    'delete:command-center': ['admin']
+  },
+
+  // Security settings (required by User model)
+  SECURITY: {
+    BCRYPT_ROUNDS: 12,
+    MAX_LOGIN_ATTEMPTS: 5,
+    LOCKOUT_DURATION: 15 * 60 * 1000 // 15 minutes
+  },
+
+  // JWT settings (required by User model)
+  JWT_SECRET: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+  JWT_EXPIRATION: process.env.JWT_EXPIRATION || '24h',
+  REFRESH_TOKEN_EXPIRATION: process.env.REFRESH_TOKEN_EXPIRATION || '7d'
 };
