@@ -1,5 +1,4 @@
-const Site = require('../models/Site');
-const StudioCompany = require('../models/StudioCompany');
+const monolithClient = require('../clients/monolithApiClient');
 const encryption = require('../utils/encryption');
 const logger = require('../utils/logger');
 
@@ -9,9 +8,10 @@ class BYOKService {
    * Returns { provider, apiKey, orgId, source: 'site_byok' | 'company_byok' | 'passbook_budget' }
    */
   async getCredentials(siteId) {
-    const site = await Site.findById(siteId)
-      .select('+tokenConfig.byokApiKey')
-      .populate('companyId');
+    const site = await monolithClient.getSite(siteId, {
+      includeByokKey: true,
+      populateCompany: true
+    });
 
     if (!site) {
       throw new Error('Site not found');
@@ -35,8 +35,9 @@ class BYOKService {
 
     // Company BYOK
     if (mode === 'company_byok') {
-      const company = await StudioCompany.findById(site.companyId)
-        .select('+byokConfig.apiKey');
+      const company = await monolithClient.getCompany(site.companyId, {
+        includeByokKey: true
+      });
 
       if (!company.byokConfig.enabled || !company.byokConfig.apiKey) {
         throw new Error('Company BYOK enabled but not configured');
@@ -78,7 +79,7 @@ class BYOKService {
    * Update company BYOK configuration
    */
   async updateCompanyBYOK(companyId, { provider, apiKey, orgId }) {
-    const company = await StudioCompany.findById(companyId);
+    const company = await monolithClient.getCompany(companyId);
 
     if (!company) {
       throw new Error('Company not found');
@@ -90,16 +91,18 @@ class BYOKService {
       throw new Error('Invalid API key');
     }
 
-    company.byokConfig.enabled = true;
-    company.byokConfig.provider = provider;
-    company.byokConfig.apiKey = encryption.encrypt(apiKey);
-    company.byokConfig.orgId = orgId;
+    const updates = {
+      'byokConfig.enabled': true,
+      'byokConfig.provider': provider,
+      'byokConfig.apiKey': encryption.encrypt(apiKey),
+      'byokConfig.orgId': orgId
+    };
 
-    await company.save();
+    const updatedCompany = await monolithClient.updateCompany(companyId, updates);
 
     logger.info('Company BYOK configured', { companyId, provider });
 
-    return company;
+    return updatedCompany;
   }
 }
 

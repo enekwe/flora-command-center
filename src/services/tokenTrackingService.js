@@ -1,10 +1,8 @@
 // services/tokenTrackingService.js
 const mongoose = require('mongoose');
 const TokenUsageLog = require('../models/TokenUsageLog');
+const monolithClient = require('../clients/monolithApiClient');
 const logger = require('../utils/logger');
-
-// Site, StudioCompany, and milestoneService are handled by the main app
-// This microservice focuses on token tracking only
 
 class TokenTrackingService {
   /**
@@ -41,33 +39,37 @@ class TokenTrackingService {
 
     await log.save();
 
-    // Update site metrics
+    // Update site metrics via monolith API
     if (siteId) {
-      await Site.findByIdAndUpdate(siteId, {
-        $inc: {
+      try {
+        await monolithClient.incrementSiteMetrics(siteId, {
           'metrics.totalTokensUsed': totalTokens,
           'metrics.totalRequests': 1,
-          'tokenConfig.budgetUsed': totalTokens
-        },
-        'metrics.lastActivityAt': new Date()
-      });
+          'tokenConfig.budgetUsed': totalTokens,
+          'metrics.lastActivityAt': new Date()
+        });
+      } catch (error) {
+        logger.error('Failed to update site metrics', { siteId, error: error.message });
+        // Don't throw - metrics update failure shouldn't break token logging
+      }
     }
 
     // Update company metrics (if exists)
     if (companyId) {
-      await StudioCompany.findByIdAndUpdate(companyId, {
-        $inc: {
-          'tokenBudget.usedTokens': totalTokens
-        }
-      });
+      try {
+        await monolithClient.incrementCompanyTokens(companyId, totalTokens);
+      } catch (error) {
+        logger.error('Failed to update company tokens', { companyId, error: error.message });
+        // Don't throw - metrics update failure shouldn't break token logging
+      }
     }
 
     // Trigger milestone checks after token usage
     if (siteId) {
       try {
-        await milestoneService.updateMilestones(siteId);
+        await monolithClient.checkMilestones(siteId);
       } catch (error) {
-        logger.error('Failed to update milestones', { siteId, error: error.message });
+        logger.error('Failed to check milestones', { siteId, error: error.message });
         // Don't throw - milestone check failure shouldn't break token logging
       }
     }
@@ -171,7 +173,7 @@ class TokenTrackingService {
    * Check if budget exceeded
    */
   async checkBudgetStatus(siteId) {
-    const site = await Site.findById(siteId);
+    const site = await monolithClient.getSite(siteId);
 
     if (!site) {
       throw new Error('Site not found');
