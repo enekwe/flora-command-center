@@ -11,16 +11,8 @@
 const fs = require('fs').promises;
 const path = require('path');
 
-// PAL is optional - only needed for AI-powered distillation
-// Most context optimization features work without it
-let getPAL = null;
-try {
-  const pal = require('./providerAbstractionLayer');
-  getPAL = pal.getPAL;
-} catch (error) {
-  console.warn('PAL not available - AI-powered distillation disabled');
-  console.warn('Context optimization will still work for non-AI features');
-}
+// PAL is now available in the microservice
+const { getPAL } = require('./providerAbstractionLayer');
 
 class ContextOptimizationService {
   constructor() {
@@ -33,11 +25,13 @@ class ContextOptimizationService {
   async initialize() {
     if (this.initialized) return;
 
-    if (getPAL) {
+    try {
       this.pal = getPAL();
       await this.pal.initialize();
-    } else {
-      console.warn('Initializing Context Optimization Service without PAL');
+      console.log('Context Optimization Service initialized with PAL');
+    } catch (error) {
+      console.warn('Failed to initialize PAL:', error.message);
+      console.warn('Context optimization will work for non-AI features');
       this.pal = null;
     }
     this.initialized = true;
@@ -77,9 +71,9 @@ class ContextOptimizationService {
 
     if (!this.pal) {
       throw new Error(
-        'PAL (Provider Abstraction Layer) is not available. ' +
+        'PAL (Provider Abstraction Layer) is not initialized. ' +
         'AI-powered chat distillation requires PAL to be configured. ' +
-        'Please ensure providerAbstractionLayer.js and its dependencies are installed.'
+        'Please check your provider configurations and ensure MongoDB is connected.'
       );
     }
 
