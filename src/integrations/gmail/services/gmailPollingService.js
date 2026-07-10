@@ -1,7 +1,7 @@
 const gmailAuthService = require('./gmailAuthService');
 const gmailSyncService = require('./gmailSyncService');
 const GmailConnection = require('../models/GmailConnection');
-const logger = require('../../../config/logger');
+const logger = require('../../../utils/logger');
 
 /**
  * Gmail Polling Service
