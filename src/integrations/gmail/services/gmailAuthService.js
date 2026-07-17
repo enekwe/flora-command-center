@@ -19,9 +19,8 @@ class GmailAuthService {
     this.clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     this.redirectUri = process.env.GOOGLE_REDIRECT_URI || 'http://localhost:4000/api/integrations/gmail/callback';
 
-    if (!this.clientId || !this.clientSecret) {
-      console.warn('Google OAuth credentials not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.');
-    }
+    // Google OAuth is optional - IMAP polling is used as alternative
+    // No warning needed as this is expected configuration
 
     // Default Gmail scopes
     this.defaultScopes = [

@@ -99,10 +99,12 @@ app.post('/graphql', (req, res) => {
 // Integration routes
 const slackRoutes = require('./integrations/slack/routes');
 const gmailRoutes = require('./integrations/gmail/routes');
+const mercuryRoutes = require('./integrations/mercury/routes');
 const commandCenterRoutes = require('./routes/commandCenterRoutes');
 
 app.use('/api/integrations/slack', slackRoutes);
 app.use('/api/integrations/gmail', gmailRoutes);
+app.use('/api/integrations/mercury', mercuryRoutes);
 app.use('/api/command-center', commandCenterRoutes);
 
 logger.info('Slack, Gmail, and Command Center routes mounted');

@@ -19,10 +19,6 @@ class SlackAuthService {
     this.clientSecret = process.env.SLACK_CLIENT_SECRET;
     this.redirectUri = process.env.SLACK_REDIRECT_URI || 'http://localhost:4000/api/integrations/slack/callback';
 
-    if (!this.clientId || !this.clientSecret) {
-      console.warn('Slack OAuth credentials not configured. Set SLACK_CLIENT_ID and SLACK_CLIENT_SECRET.');
-    }
-
     // Slack OAuth endpoints
     this.authUrl = 'https://slack.com/oauth/v2/authorize';
     this.tokenUrl = 'https://slack.com/api/oauth.v2.access';
