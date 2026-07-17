@@ -114,13 +114,15 @@ const connectDatabases = async () => {
   // MongoDB connection
   if (process.env.MONGODB_URI) {
     try {
-      await mongoose.connect(process.env.MONGODB_URI, {
-        useNewUrlParser: true,
-        useUnifiedTopology: true
-      });
+      await mongoose.connect(process.env.MONGODB_URI);
       logger.info('MongoDB connected successfully');
     } catch (error) {
-      logger.warn('MongoDB connection failed, running without database:', error.message);
+      logger.error('MongoDB connection failed:', {
+        error: error.message,
+        code: error.code,
+        name: error.name
+      });
+      logger.warn('Running without database - some features may be limited');
     }
   } else {
     logger.info('No MongoDB URI provided, running without database');
