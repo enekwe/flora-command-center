@@ -102,7 +102,38 @@ class ProviderRoutingService {
       }
 
       // Get provider chain (primary + fallbacks)
-      const providerChain = this.getProviderChain(rule);
+      let providerChain = this.getProviderChain(rule);
+
+      // ZDR-E4-S2: Filter chain by trust tier before cost/latency optimization (G5)
+      const requiredTier = context.requiredTrustTier || null;
+      if (requiredTier) {
+        const tierOrder = { self_hosted: 3, zdr_contracted: 2, standard_hosted: 1 };
+        const requiredLevel = tierOrder[requiredTier] || 0;
+
+        const filteredChain = [];
+        for (const pid of providerChain) {
+          const pc = await this.getProviderConfig(pid);
+          if (pc && pc.trustTier) {
+            const providerLevel = tierOrder[pc.trustTier] || 0;
+            if (providerLevel >= requiredLevel) {
+              filteredChain.push(pid);
+            } else {
+              logger.info(`Provider ${pid} excluded: trustTier ${pc.trustTier} < required ${requiredTier}`);
+            }
+          } else {
+            filteredChain.push(pid);
+          }
+        }
+
+        if (filteredChain.length === 0) {
+          throw new Error(
+            `No provider meets required trust tier ${requiredTier} for ${agentType}. ` +
+            `All ${providerChain.length} candidates filtered out — fail closed.`
+          );
+        }
+
+        providerChain = filteredChain;
+      }
 
       // Try each provider in order
       for (const providerId of providerChain) {
