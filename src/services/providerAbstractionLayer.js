@@ -17,6 +17,7 @@ const {
   ProviderChainExhaustedError,
   RateLimitExceededError,
   ContextWindowExceededError,
+  EgressPolicyViolationError,
   shouldRetryWithFallback,
   fromProviderError
 } = require('../utils/errors/palErrors');
@@ -120,6 +121,8 @@ class ProviderAbstractionLayer {
    * @param {boolean} config.streaming - Enable streaming (optional)
    * @param {Function} config.onChunk - Streaming callback (optional)
    * @param {boolean} config.enableFallback - Enable automatic fallback (default: true)
+   * @param {boolean} config.failClosed - Enable fail-closed routing mode (default: false, true for ZDR tenants)
+   * @param {Array<string>} config.allowedProviders - Providers allowed for this request (required if failClosed)
    * @returns {Promise<Object>} Normalized response with content, usage, and metadata
    */
   async callModel(skillRef, input, config = {}) {
@@ -634,6 +637,7 @@ class ProviderAbstractionLayer {
   /**
    * Call provider with automatic fallback chain
    * Phase 4: Enhanced with circuit breaker and fallback logic
+   * ZDR-E0-S1: Added fail-closed routing mode to prevent egress policy violations
    * @private
    */
   async _callWithFallback(provider, agentType, skillRef, input, config) {
@@ -641,14 +645,49 @@ class ProviderAbstractionLayer {
     const attemptedProviders = [];
     const failures = [];
 
+    // ZDR-E0-S1: Fail-closed mode validation
+    const failClosed = config.failClosed || false;
+    const allowedProviders = config.allowedProviders || [];
+
+    // Validate primary provider against allow-list if fail-closed mode enabled
+    if (failClosed && allowedProviders.length > 0) {
+      const primaryProviderName = provider.config.provider;
+      if (!allowedProviders.includes(primaryProviderName)) {
+        logger.error('Egress policy violation: Primary provider not on allow-list', {
+          requestedProvider: primaryProviderName,
+          allowedProviders,
+          failClosed
+        });
+
+        throw new EgressPolicyViolationError(
+          primaryProviderName,
+          allowedProviders,
+          'Provider not on tenant allow-list'
+        );
+      }
+    }
+
     // Build list of providers to try
     const providersToTry = [provider];
 
     // Add fallback providers if routing is enabled
     if (this.routingEnabled && config.enableFallback !== false) {
       // Get fallback chain from routing service
-      const availableProviders = Array.from(this.providers.values())
+      let availableProviders = Array.from(this.providers.values())
         .filter(p => p.config.provider !== provider.config.provider);
+
+      // ZDR-E0-S1: Filter by allow-list if fail-closed mode enabled
+      if (failClosed && allowedProviders.length > 0) {
+        availableProviders = availableProviders.filter(p =>
+          allowedProviders.includes(p.config.provider)
+        );
+
+        logger.info('Fail-closed mode: Filtered fallback providers by allow-list', {
+          originalCount: Array.from(this.providers.values()).length - 1,
+          filteredCount: availableProviders.length,
+          allowedProviders
+        });
+      }
 
       // Limit to 3 total attempts
       while (providersToTry.length < 3 && availableProviders.length > 0) {
@@ -656,6 +695,14 @@ class ProviderAbstractionLayer {
         if (nextProvider) {
           providersToTry.push(nextProvider);
         }
+      }
+
+      // ZDR-E0-S1: Fail-closed mode with no fallback candidates available
+      if (failClosed && providersToTry.length === 1 && config.enableFallback !== false) {
+        logger.warn('Fail-closed mode: No fallback providers available on allow-list', {
+          primaryProvider: provider.config.provider,
+          allowedProviders
+        });
       }
     }
 
