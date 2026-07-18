@@ -146,7 +146,7 @@ describe('ZDR-E2-S1: Comprehensive secret detector', () => {
     { name: 'GitHub PAT', input: 'token: ghp_1234567890abcdefghijklmnopqrstuvwxyz', expected: 'GITHUB_TOKEN_REDACTED' },
     { name: 'Slack token', input: 'SLACK_TOKEN=xoxb-1234567890-abcdefgh', expected: 'SLACK_TOKEN_REDACTED' },
     { name: 'AWS access key', input: 'aws_key = AKIAIOSFODNN7EXAMPLE', expected: 'AWS_KEY_REDACTED' },
-    { name: 'Stripe key', input: 'stripe_key = STRIPE_KEY_EXAMPLE_FOR_TEST', expected: 'STRIPE_KEY_REDACTED' },
+    { name: 'Stripe key', input: 'stripe_key = FAKE_stripe_XXXXXXXXXXXXXXXXXXXXXXXXXX', expected: 'STRIPE_KEY_REDACTED' },
     { name: 'JWT', input: 'auth: eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abc123def456', expected: 'JWT_REDACTED' },
     { name: 'Private key', input: '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA\n-----END RSA PRIVATE KEY-----', expected: 'PRIVATE_KEY_REDACTED' },
     { name: 'MongoDB URI', input: 'MONGODB_URI=mongodb://user:pass@host:27017/db', expected: 'MONGODB_URI_REDACTED' },
