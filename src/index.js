@@ -102,12 +102,15 @@ const gmailRoutes = require('./integrations/gmail/routes');
 const mercuryRoutes = require('./integrations/mercury/routes');
 const commandCenterRoutes = require('./routes/commandCenterRoutes');
 
+const zdrRoutes = require('./routes/zdrRoutes');
+
 app.use('/api/integrations/slack', slackRoutes);
 app.use('/api/integrations/gmail', gmailRoutes);
 app.use('/api/integrations/mercury', mercuryRoutes);
 app.use('/api/command-center', commandCenterRoutes);
+app.use('/api/command-center/zdr', zdrRoutes);
 
-logger.info('Slack, Gmail, and Command Center routes mounted');
+logger.info('Slack, Gmail, Command Center, and ZDR routes mounted');
 
 // Database connections (with proper error handling)
 const connectDatabases = async () => {
