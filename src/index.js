@@ -145,9 +145,65 @@ const connectDatabases = async () => {
   }
 };
 
+// ZDR-E0-S4 & ZDR-E0-S5: Cleanup schedulers
+const scheduleCleanupJobs = async () => {
+  const TokenUsageTracker = require('./models/TokenUsageTracker');
+  const { getArtifactPurgeService } = require('./services/artifactPurgeService');
+  const config = require('./config');
+
+  // ZDR-E0-S5: Token usage cleanup (existing)
+  const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+  const CLEANUP_RETENTION_DAYS = 30;
+
+  const runTokenCleanup = async () => {
+    try {
+      logger.info('Running scheduled cleanup of old token usage sessions');
+      const deletedCount = await TokenUsageTracker.cleanupOldSessions(CLEANUP_RETENTION_DAYS);
+      logger.info(`Cleanup completed: ${deletedCount} old sessions deleted`);
+    } catch (error) {
+      logger.error('Token cleanup job failed', {
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  };
+
+  // Initial token cleanup on startup (after 5 minute delay)
+  setTimeout(() => {
+    runTokenCleanup();
+  }, 5 * 60 * 1000);
+
+  // Schedule recurring token cleanup
+  setInterval(runTokenCleanup, CLEANUP_INTERVAL);
+
+  logger.info('Token usage cleanup job scheduled (runs daily)');
+
+  // ZDR-E0-S4: Artifact purge service (new)
+  if (config.zdr.enableScheduledPurge) {
+    try {
+      const artifactPurgeService = getArtifactPurgeService();
+      await artifactPurgeService.initialize();
+      artifactPurgeService.startScheduledPurge();
+      logger.info('Artifact purge service started successfully');
+    } catch (error) {
+      logger.error('Failed to start artifact purge service', {
+        error: error.message,
+        stack: error.stack
+      });
+    }
+  } else {
+    logger.info('Artifact purge service disabled by configuration');
+  }
+};
+
 // Start server
 const startServer = async () => {
   await connectDatabases();
+
+  // ZDR-E0-S4 & ZDR-E0-S5: Schedule cleanup jobs if MongoDB is connected
+  if (mongoose.connection.readyState === 1) {
+    await scheduleCleanupJobs();
+  }
 
   app.listen(PORT, '0.0.0.0', () => {
     logger.info(`Command Center service running on port ${PORT}`);

@@ -86,6 +86,24 @@ module.exports = {
     compressThreshold: 1024 * 10 // Compress if larger than 10KB
   },
 
+  // Zero Data Retention (ZDR) configuration
+  zdr: {
+    // ZDR tenant identifiers (comma-separated list)
+    tenantIds: process.env.ZDR_TENANT_IDS ? process.env.ZDR_TENANT_IDS.split(',').filter(Boolean) : [],
+
+    // Artifact TTL for non-ZDR tenants (hours)
+    artifactTTLHours: parseInt(process.env.ARTIFACT_TTL_HOURS || '24'),
+
+    // Purge job interval (minutes)
+    purgeIntervalMinutes: parseInt(process.env.PURGE_INTERVAL_MINUTES || '60'),
+
+    // Enable/disable artifact purge scheduling
+    enableScheduledPurge: process.env.ENABLE_SCHEDULED_PURGE !== 'false',
+
+    // Fail-closed routing for ZDR tenants
+    routingFailClosed: process.env.ROUTING_FAIL_CLOSED === 'true'
+  },
+
   // Rate limiting
   rateLimit: {
     windowMs: 15 * 60 * 1000, // 15 minutes
