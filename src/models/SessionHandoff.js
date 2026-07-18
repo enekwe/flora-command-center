@@ -20,6 +20,30 @@ const sessionHandoffSchema = new mongoose.Schema({
     trim: true
   },
 
+  // ZDR-E3-S1: Tenant isolation — required companyId on all content-bearing stores (G6)
+  companyId: {
+    type: String,
+    required: [true, 'Company ID is required for tenant isolation'],
+    index: true,
+    trim: true,
+    description: 'Tenant identifier for cross-tenant isolation (ZDR guarantee G6)'
+  },
+
+  // ZDR-E1-S2: Per-request encryption key reference (crypto-erase replaces soft-delete for code)
+  encryptionKeyRef: {
+    type: String,
+    trim: true,
+    select: false,
+    description: 'Reference to ephemeral per-request data key (destroyed at session end)'
+  },
+
+  // ZDR-E1-S3: Flag indicating code-bearing fields have been verified code-free
+  codeFreeVerified: {
+    type: Boolean,
+    default: false,
+    description: 'True when pre-persistence verification confirms no raw Customer Code'
+  },
+
   // Agent Information
   agentType: {
     type: String,
@@ -388,6 +412,7 @@ const sessionHandoffSchema = new mongoose.Schema({
 
 // Compound Indexes
 sessionHandoffSchema.index({ sessionId: 1, createdAt: -1 });
+sessionHandoffSchema.index({ companyId: 1, sessionId: 1 }); // ZDR-E3-S1: tenant-scoped lookups
 sessionHandoffSchema.index({ provider: 1, agentType: 1 });
 sessionHandoffSchema.index({ status: 1, createdAt: -1 });
 sessionHandoffSchema.index({ triggerReason: 1, status: 1 });
@@ -425,6 +450,34 @@ sessionHandoffSchema.virtual('completionPercentage').get(function() {
   const total = this.workCompleted.length + this.remainingTasks.length;
   if (total === 0) return 0;
   return (this.workCompleted.length / total) * 100;
+});
+
+// ZDR-E1-S3: Pre-save verification — assert no raw Customer Code in persisted fields
+sessionHandoffSchema.pre('save', function(next) {
+  // ZDR-E1-S3: Verify code-bearing fields are either empty or verified code-free
+  // For ZDR tenants, relevantCode snippets must be redacted or absent
+  if (this.relevantCode && this.relevantCode.length > 0) {
+    const hasRawCode = this.relevantCode.some(entry =>
+      entry.snippet && entry.snippet.length > 0 && !entry.snippet.includes('[REDACTED]')
+    );
+
+    if (hasRawCode && !this.codeFreeVerified) {
+      // Strip code snippets that haven't been verified as code-free
+      this.relevantCode = this.relevantCode.map(entry => ({
+        ...entry,
+        snippet: entry.snippet ? '[CODE_REDACTED_FOR_ZDR]' : entry.snippet
+      }));
+      this.codeFreeVerified = true;
+    }
+  }
+
+  // Strip codebaseSnapshot content for ZDR (file names/structure are metadata, not code)
+  if (this.codebaseSnapshot && this.codebaseSnapshot.uncommittedChanges !== undefined) {
+    // codebaseSnapshot contains branch/commit/files metadata — this is Operational Record
+    // No raw code content, just file paths — safe to persist
+  }
+
+  next();
 });
 
 // Pre-save middleware
@@ -573,22 +626,25 @@ sessionHandoffSchema.methods.addRecommendation = function(recommendation, priori
 // Static Methods
 
 /**
- * Find active handoffs by session
+ * Find active handoffs by session (ZDR-E3-S1: scoped by companyId)
  */
-sessionHandoffSchema.statics.findActiveBySession = async function(sessionId) {
-  return this.find({
+sessionHandoffSchema.statics.findActiveBySession = async function(sessionId, companyId) {
+  const query = {
     sessionId,
     status: { $in: ['pending', 'generated', 'acknowledged', 'resumed'] },
     expiresAt: { $gt: new Date() }
-  }).sort({ createdAt: -1 });
+  };
+  if (companyId) query.companyId = companyId;
+  return this.find(query).sort({ createdAt: -1 });
 };
 
 /**
- * Find latest handoff by session
+ * Find latest handoff by session (ZDR-E3-S1: scoped by companyId)
  */
-sessionHandoffSchema.statics.findLatestBySession = async function(sessionId) {
-  return this.findOne({ sessionId })
-    .sort({ createdAt: -1 });
+sessionHandoffSchema.statics.findLatestBySession = async function(sessionId, companyId) {
+  const query = { sessionId };
+  if (companyId) query.companyId = companyId;
+  return this.findOne(query).sort({ createdAt: -1 });
 };
 
 /**

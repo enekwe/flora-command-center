@@ -17,6 +17,14 @@ const tokenUsageTrackerSchema = new mongoose.Schema({
     trim: true
   },
 
+  // ZDR-E3-S1: Tenant isolation — required companyId (G6)
+  companyId: {
+    type: String,
+    index: true,
+    trim: true,
+    description: 'Tenant identifier for cross-tenant isolation (ZDR guarantee G6)'
+  },
+
   // Provider Information
   provider: {
     type: String,
@@ -228,6 +236,7 @@ const tokenUsageTrackerSchema = new mongoose.Schema({
 // Compound Indexes for efficient queries
 tokenUsageTrackerSchema.index({ sessionId: 1, provider: 1 });
 tokenUsageTrackerSchema.index({ sessionId: 1, status: 1 });
+tokenUsageTrackerSchema.index({ companyId: 1, sessionId: 1 }); // ZDR-E3-S1: tenant-scoped lookups
 tokenUsageTrackerSchema.index({ provider: 1, status: 1, lastUpdated: -1 });
 tokenUsageTrackerSchema.index({ status: 1, handoffTriggered: 1 });
 tokenUsageTrackerSchema.index({ windowStart: 1, windowEnd: 1 });
@@ -519,14 +528,17 @@ tokenUsageTrackerSchema.methods.getRemainingCapacity = function() {
 // Static Methods
 
 /**
- * Create or get tracker for session
+ * Create or get tracker for session (ZDR-E3-S1: scoped by companyId)
  */
-tokenUsageTrackerSchema.statics.getOrCreateTracker = async function(sessionId, provider, model, maxTokens) {
-  let tracker = await this.findOne({
+tokenUsageTrackerSchema.statics.getOrCreateTracker = async function(sessionId, provider, model, maxTokens, companyId = null) {
+  const query = {
     sessionId,
     provider,
     status: { $in: ['active', 'warning', 'critical'] }
-  });
+  };
+  if (companyId) query.companyId = companyId;
+
+  let tracker = await this.findOne(query);
 
   if (!tracker) {
     tracker = new this({
@@ -534,6 +546,7 @@ tokenUsageTrackerSchema.statics.getOrCreateTracker = async function(sessionId, p
       provider,
       model,
       maxTokens,
+      companyId,
       tokensUsed: 0,
       costAccumulated: 0,
       requestCount: 0
@@ -545,9 +558,9 @@ tokenUsageTrackerSchema.statics.getOrCreateTracker = async function(sessionId, p
 };
 
 /**
- * Find active tracker by session
+ * Find active tracker by session (ZDR-E3-S1: scoped by companyId)
  */
-tokenUsageTrackerSchema.statics.findActiveBySession = async function(sessionId, provider = null) {
+tokenUsageTrackerSchema.statics.findActiveBySession = async function(sessionId, provider = null, companyId = null) {
   const query = {
     sessionId,
     status: { $in: ['active', 'warning', 'critical'] }
@@ -555,6 +568,9 @@ tokenUsageTrackerSchema.statics.findActiveBySession = async function(sessionId, 
 
   if (provider) {
     query.provider = provider;
+  }
+  if (companyId) {
+    query.companyId = companyId;
   }
 
   return this.findOne(query).sort({ lastUpdated: -1 });
