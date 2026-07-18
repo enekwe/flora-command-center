@@ -6,12 +6,14 @@ const OpenAIProvider = require('./providers/openaiProvider');
 const GeminiProvider = require('./providers/geminiProvider');
 const QwenProvider = require('./providers/qwenProvider');
 const GLMProvider = require('./providers/glmProvider');
+const DeepSeekProvider = require('./providers/deepseekProvider');
 const logger = require('../utils/logger');
 
 // Phase 4: Routing Integration
 const providerRoutingService = require('./providerRoutingService');
 const tokenTrackingService = require('./tokenTrackingService');
 const { getHandoffService } = require('./sessionHandoffService');
+const { getRedactionService } = require('./dataRedactionService');
 const {
   SessionHandoffRequiredError,
   ProviderChainExhaustedError,
@@ -47,6 +49,9 @@ class ProviderAbstractionLayer {
     this.tokenTracker = tokenTrackingService;
     this.handoffService = getHandoffService();
     this.routingEnabled = true; // Can be disabled for backward compatibility
+
+    // ZDR-E0-S2: Data Redaction Service
+    this.redactionService = getRedactionService();
   }
 
   /**
@@ -371,6 +376,18 @@ class ProviderAbstractionLayer {
       case 'glm':
         providerInstance = new GLMProvider(config);
         break;
+      case 'deepseek':
+        providerInstance = new DeepSeekProvider(config);
+        break;
+      case 'opensource':
+        // ZDR-E0-S5: 'opensource' is a valid enum value but not a specific provider
+        // It's a category for self-hosted/open-source models
+        // For now, log a warning and skip initialization
+        logger.warn(`Skipping initialization of 'opensource' provider - requires specific provider implementation`, {
+          modelId: config.modelId,
+          provider: config.provider
+        });
+        return; // Skip adding to providers map
       default:
         throw new Error(`Unsupported provider: ${config.provider}`);
     }
@@ -753,6 +770,46 @@ class ProviderAbstractionLayer {
           }
         };
 
+        // ZDR-E0-S2: Redact sensitive data BEFORE provider call (Guarantee G4)
+        let redactionResult = { redactionCount: 0, redactionDetails: [] };
+
+        if (config.enableRedaction !== false) { // Default: enabled
+          // Redact user prompt
+          if (params.prompt) {
+            const redacted = this.redactionService.redact(params.prompt);
+            params.prompt = redacted.redactedContent;
+            redactionResult.redactionCount += redacted.redactionCount;
+            redactionResult.redactionDetails.push(...redacted.redactionDetails);
+          }
+
+          // Redact system prompt
+          if (params.systemPrompt) {
+            const redacted = this.redactionService.redact(params.systemPrompt);
+            params.systemPrompt = redacted.redactedContent;
+            redactionResult.redactionCount += redacted.redactionCount;
+            redactionResult.redactionDetails.push(...redacted.redactionDetails);
+          }
+
+          // Redact messages (if present)
+          if (params.messages && Array.isArray(params.messages)) {
+            params.messages = params.messages.map(msg => {
+              if (msg.content) {
+                const redacted = this.redactionService.redact(msg.content);
+                redactionResult.redactionCount += redacted.redactionCount;
+                redactionResult.redactionDetails.push(...redacted.redactionDetails);
+                return { ...msg, content: redacted.redactedContent };
+              }
+              return msg;
+            });
+          }
+
+          logger.info('Content redacted before provider call', {
+            provider: providerKey,
+            redactionCount: redactionResult.redactionCount,
+            types: redactionResult.redactionDetails.map(d => d.type)
+          });
+        }
+
         // 4. Call the provider
         let response;
         if (config.streaming && currentProvider.provider.config.capabilities.supportsStreaming) {
@@ -800,6 +857,15 @@ class ProviderAbstractionLayer {
             model: currentProvider.config.modelId,
             attemptNumber: attemptedProviders.length + 1,
             fallbacksUsed: attemptedProviders.length
+          },
+          // ZDR-E0-S2: Include redaction metadata (Guarantee G4)
+          redaction: {
+            count: redactionResult.redactionCount,
+            applied: redactionResult.redactionCount > 0,
+            details: redactionResult.redactionDetails.map(d => ({
+              type: d.type,
+              count: d.count
+            }))
           }
         };
 
