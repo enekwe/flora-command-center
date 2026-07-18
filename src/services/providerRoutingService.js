@@ -129,11 +129,38 @@ class ProviderRoutingService {
         this.stats.successfulRoutes++;
         logger.info(`Selected provider ${providerId} for ${agentType}`);
 
+        // ZDR-E0-S5: Add score and selectionReason to match expected return shape
+        const isFallback = providerId !== rule.primaryProvider;
+        const selectionReason = isFallback
+          ? `Fallback provider (primary: ${rule.primaryProvider})`
+          : 'Primary provider from routing rule';
+
+        // Calculate score based on provider health and position in chain
+        const healthStatus = this.providerHealth.get(providerId);
+        let score = 100; // Base score
+
+        // Reduce score if fallback
+        if (isFallback) {
+          const chain = this.getProviderChain(rule);
+          const position = chain.indexOf(providerId);
+          score -= position * 10; // Reduce by 10 for each position away from primary
+        }
+
+        // Reduce score based on failure count
+        if (healthStatus?.failureCount) {
+          score -= healthStatus.failureCount * 5;
+        }
+
+        // Ensure score stays in valid range
+        score = Math.max(0, Math.min(100, score));
+
         return {
           provider: providerId,
           config: providerConfig,
           rule: rule,
-          isFallback: providerId !== rule.primaryProvider
+          isFallback,
+          score,
+          selectionReason
         };
       }
 
