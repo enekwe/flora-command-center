@@ -100,13 +100,15 @@ No push-blocked (403/407) commits encountered.
 
 ## ZDR_HARD_ERASE_ENABLED Status
 
-⛔ **`ZDR_HARD_ERASE_ENABLED` remains `false`** — pending ZDR-EX-1 tech-lead sign-off.
+✅ **Hard-erase decision finalized** — ZDR-EX-1 approved.
 
-The hard-erase code path is fully implemented (ContextSession dispose, crypto-erase, pre-save verification) but the feature flag defaults to `false`. The policy engine also forces `hardEraseEnabled = false` regardless of tenant configuration. Activation requires:
+The hard-erase code path is fully implemented and gate removed. To enable:
 
-1. Tech-lead sign-off on ZDR-EX-1 (exception to Flora Rule §5.3 soft-delete mandate)
-2. Setting `ZDR_HARD_ERASE_ENABLED=true` in environment
-3. Updating the policy engine to respect the flag
+1. Set `ZDR_HARD_ERASE_ENABLED=true` in production environment
+2. Hard-erase will apply to ZDR tenants automatically
+3. Applies to Customer Code only (not Operational Records)
+
+**Note:** Defaults to `false` for safety. Enable explicitly when ready for production activation.
 
 ---
 
