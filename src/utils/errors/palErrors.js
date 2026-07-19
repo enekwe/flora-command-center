@@ -297,6 +297,53 @@ class InvalidAgentTypeError extends PALError {
 }
 
 /**
+ * EgressPolicyViolationError
+ *
+ * Thrown when fail-closed routing mode prevents fallback to an unapproved provider.
+ * This is a security control to prevent Customer Code from being sent to
+ * providers outside the tenant's allow-list.
+ *
+ * @property {string} requestedProvider - Provider that was attempted
+ * @property {Array<string>} allowedProviders - Providers allowed for this request
+ * @property {string} reason - Why the egress was blocked
+ */
+class EgressPolicyViolationError extends PALError {
+  constructor(requestedProvider, allowedProviders = [], reason = 'Provider not on allow-list') {
+    const allowedList = allowedProviders.length > 0
+      ? allowedProviders.join(', ')
+      : 'none (fail-closed mode enabled)';
+
+    super(
+      `Egress policy violation: Cannot route to '${requestedProvider}'. Allowed providers: ${allowedList}`,
+      'EGRESS_POLICY_VIOLATION',
+      {
+        requestedProvider,
+        allowedProviders,
+        reason
+      }
+    );
+
+    this.requestedProvider = requestedProvider;
+    this.allowedProviders = allowedProviders;
+    this.reason = reason;
+    this.isRecoverable = false; // Policy violation - no fallback allowed
+    this.isRetryable = false;
+  }
+
+  /**
+   * Get user-facing error response
+   */
+  getUserMessage() {
+    return {
+      type: 'egress_policy_violation',
+      message: 'The requested AI provider is not approved for your account. Please contact your administrator.',
+      requestedProvider: this.requestedProvider,
+      reason: this.reason
+    };
+  }
+}
+
+/**
  * Helper function to check if an error should trigger fallback
  */
 function shouldRetryWithFallback(error) {
@@ -309,6 +356,7 @@ function shouldRetryWithFallback(error) {
   if (error instanceof SessionHandoffRequiredError) return false;
   if (error instanceof ProviderChainExhaustedError) return false;
   if (error instanceof InvalidAgentTypeError) return false;
+  if (error instanceof EgressPolicyViolationError) return false;
 
   // Check for retryable flag
   if (error.isRetryable !== undefined) {
@@ -389,6 +437,7 @@ module.exports = {
   ContextWindowExceededError,
   ProviderNotAvailableError,
   InvalidAgentTypeError,
+  EgressPolicyViolationError,
   shouldRetryWithFallback,
   fromProviderError
 };

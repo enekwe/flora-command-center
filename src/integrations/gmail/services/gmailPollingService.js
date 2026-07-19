@@ -161,6 +161,87 @@ class GmailPollingService {
   }
 
   /**
+   * Extract original recipient from email headers
+   * Prioritizes X-Original-To header (Gmail alias forwarding) over To header
+   * @param {Object} emailData - Email data with headers array
+   * @returns {string} Original recipient email address (lowercase)
+   */
+  extractOriginalRecipient(emailData) {
+    // Try X-Original-To header first (Gmail aliases preserve this)
+    const xOriginalTo = emailData.headers?.find(
+      h => h.name.toLowerCase() === 'x-original-to'
+    );
+    if (xOriginalTo) {
+      return xOriginalTo.value.toLowerCase();
+    }
+
+    // Fallback to To header (for direct emails not through aliases)
+    const toHeader = emailData.headers?.find(
+      h => h.name.toLowerCase() === 'to'
+    );
+    if (toHeader) {
+      return toHeader.value.toLowerCase();
+    }
+
+    return '';
+  }
+
+  /**
+   * Determine email context based on recipient and content
+   * Uses layered routing: X-Original-To header > Deal ID extraction > Keyword matching > Default
+   * @param {Object} emailData - Email data with headers, body, snippet
+   * @returns {Object} Context object with type, specificId, confidence, routingMethod
+   */
+  determineContext(emailData) {
+    const originalRecipient = this.extractOriginalRecipient(emailData);
+
+    // Get subject and body for keyword matching
+    const subject = emailData.headers?.find(h => h.name.toLowerCase() === 'subject')?.value || '';
+    const body = emailData.body || '';
+    const snippet = emailData.snippet || '';
+    const combined = `${subject} ${body} ${snippet}`.toLowerCase();
+
+    // Layer 1: Primary routing - Match against original recipient (high confidence)
+    if (originalRecipient.includes('deals@')) {
+      return { type: 'deal', specificId: null, confidence: 'high', routingMethod: 'header' };
+    }
+    if (originalRecipient.includes('fundraising@')) {
+      return { type: 'fundraising', specificId: null, confidence: 'high', routingMethod: 'header' };
+    }
+    if (originalRecipient.includes('intros@')) {
+      return { type: 'introduction', specificId: null, confidence: 'high', routingMethod: 'header' };
+    }
+    if (originalRecipient.includes('texts@')) {
+      return { type: 'sms', specificId: null, confidence: 'high', routingMethod: 'header' };
+    }
+
+    // Layer 2: Extract specific deal ID if present: deal-{mongoId}@flora.passbook.vc
+    const dealIdMatch = originalRecipient.match(/deal-([a-f0-9]{24})@/i);
+    if (dealIdMatch) {
+      return {
+        type: 'deal',
+        specificId: dealIdMatch[1].toLowerCase(),
+        confidence: 'high',
+        routingMethod: 'dealId'
+      };
+    }
+
+    // Layer 3: Secondary routing - Keyword matching as fallback (low confidence)
+    if (combined.includes('fundraising')) {
+      return { type: 'fundraising', specificId: null, confidence: 'low', routingMethod: 'keyword' };
+    }
+    if (combined.includes('deal')) {
+      return { type: 'deal', specificId: null, confidence: 'low', routingMethod: 'keyword' };
+    }
+    if (combined.includes('intro')) {
+      return { type: 'introduction', specificId: null, confidence: 'low', routingMethod: 'keyword' };
+    }
+
+    // Layer 4: Default fallback
+    return { type: 'general', specificId: null, confidence: 'unknown', routingMethod: 'default' };
+  }
+
+  /**
    * Build context-aware search queries
    * @param {Object} connection - Gmail connection
    * @returns {Array} Array of query objects
@@ -240,7 +321,7 @@ class GmailPollingService {
    * Process individual email message
    * @param {string} connectionId - Gmail connection ID
    * @param {string} messageId - Gmail message ID
-   * @param {string} context - Email context
+   * @param {string} context - Email context (from search query, used as fallback)
    */
   async processEmailMessage(connectionId, messageId, context) {
     try {
@@ -251,21 +332,43 @@ class GmailPollingService {
       // Extract email data
       const emailData = this.extractEmailData(message);
 
+      // Determine context using header-based routing
+      const routingContext = this.determineContext(emailData);
+      const originalRecipient = this.extractOriginalRecipient(emailData);
+
       // Check for attachments (potential screenshots)
       const hasAttachments = message.payload.parts?.some(
         part => part.filename && part.body.attachmentId
       );
 
       // Process attachments if this is a screenshot context
-      if (hasAttachments && (context === 'sms' || context === 'linkedin')) {
-        await this.processAttachments(connectionId, messageId, message.payload.parts, context);
+      if (hasAttachments && (routingContext.type === 'sms' || routingContext.type === 'linkedin')) {
+        await this.processAttachments(connectionId, messageId, message.payload.parts, routingContext.type);
       }
+
+      // Prepare email data with routing metadata
+      const enrichedEmailData = {
+        ...emailData,
+        contextType: routingContext.type,
+        contextId: routingContext.specificId || null,
+        metadata: {
+          originalRecipient: originalRecipient,
+          routingMethod: routingContext.routingMethod,
+          routingConfidence: routingContext.confidence,
+          hasAttachments,
+          queryContext: context // Original context from search query
+        }
+      };
 
       // TODO: Send email data to interaction ingest service via message queue
       // This will be implemented when connecting to the main monolith
-      logger.info('Email processed (not yet sent to ingest):', {
+      logger.info('Email processed with routing metadata:', {
         messageId,
-        context,
+        contextType: routingContext.type,
+        specificId: routingContext.specificId,
+        routingMethod: routingContext.routingMethod,
+        confidence: routingContext.confidence,
+        originalRecipient,
         from: emailData.from,
         subject: emailData.subject,
         hasAttachments
@@ -278,6 +381,8 @@ class GmailPollingService {
         [], // No labels to add
         ['UNREAD'] // Remove UNREAD label
       );
+
+      return enrichedEmailData;
 
     } catch (error) {
       logger.error(`Error processing message ${messageId}:`, error);
@@ -322,7 +427,8 @@ class GmailPollingService {
       body: body,
       snippet: message.snippet,
       labelIds: message.labelIds,
-      internalDate: message.internalDate
+      internalDate: message.internalDate,
+      headers: headers // Include headers for routing analysis
     };
   }
 

@@ -160,6 +160,30 @@ const providerConfigSchema = new mongoose.Schema({
     default: {}
   },
 
+  // ZDR-E0-S3: Trust Tier for Egress Control (Guarantee G5)
+  trustTier: {
+    type: String,
+    enum: {
+      values: ['self_hosted', 'zdr_contracted', 'standard_hosted'],
+      message: '{VALUE} is not a valid trust tier'
+    },
+    default: 'standard_hosted',
+    required: true,
+    index: true,
+    description: 'Provider trust tier for ZDR egress control: self_hosted (in-perimeter), zdr_contracted (contractual zero-retention), standard_hosted (public cloud)'
+  },
+
+  // Data Residency Zone
+  residencyZone: {
+    type: String,
+    enum: {
+      values: ['customer_perimeter', 'flora_perimeter', 'us_east', 'us_west', 'eu_west', 'ap_southeast', 'china'],
+      message: '{VALUE} is not a valid residency zone'
+    },
+    default: 'flora_perimeter',
+    description: 'Where provider actually runs (customer perimeter vs cloud region)'
+  },
+
   // Status and Control
   status: {
     type: String,
@@ -326,6 +350,7 @@ providerConfigSchema.index({ provider: 1, status: 1 });
 providerConfigSchema.index({ provider: 1, modelId: 1 }, { unique: true });
 providerConfigSchema.index({ status: 1, priority: -1 });
 providerConfigSchema.index({ isDefault: 1, status: 1 });
+providerConfigSchema.index({ trustTier: 1, status: 1 }); // ZDR-E0-S3: Trust tier filtering
 
 // Virtual: Health Status
 providerConfigSchema.virtual('healthStatus').get(function() {

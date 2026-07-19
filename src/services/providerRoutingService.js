@@ -102,7 +102,38 @@ class ProviderRoutingService {
       }
 
       // Get provider chain (primary + fallbacks)
-      const providerChain = this.getProviderChain(rule);
+      let providerChain = this.getProviderChain(rule);
+
+      // ZDR-E4-S2: Filter chain by trust tier before cost/latency optimization (G5)
+      const requiredTier = context.requiredTrustTier || null;
+      if (requiredTier) {
+        const tierOrder = { self_hosted: 3, zdr_contracted: 2, standard_hosted: 1 };
+        const requiredLevel = tierOrder[requiredTier] || 0;
+
+        const filteredChain = [];
+        for (const pid of providerChain) {
+          const pc = await this.getProviderConfig(pid);
+          if (pc && pc.trustTier) {
+            const providerLevel = tierOrder[pc.trustTier] || 0;
+            if (providerLevel >= requiredLevel) {
+              filteredChain.push(pid);
+            } else {
+              logger.info(`Provider ${pid} excluded: trustTier ${pc.trustTier} < required ${requiredTier}`);
+            }
+          } else {
+            filteredChain.push(pid);
+          }
+        }
+
+        if (filteredChain.length === 0) {
+          throw new Error(
+            `No provider meets required trust tier ${requiredTier} for ${agentType}. ` +
+            `All ${providerChain.length} candidates filtered out — fail closed.`
+          );
+        }
+
+        providerChain = filteredChain;
+      }
 
       // Try each provider in order
       for (const providerId of providerChain) {
@@ -129,11 +160,38 @@ class ProviderRoutingService {
         this.stats.successfulRoutes++;
         logger.info(`Selected provider ${providerId} for ${agentType}`);
 
+        // ZDR-E0-S5: Add score and selectionReason to match expected return shape
+        const isFallback = providerId !== rule.primaryProvider;
+        const selectionReason = isFallback
+          ? `Fallback provider (primary: ${rule.primaryProvider})`
+          : 'Primary provider from routing rule';
+
+        // Calculate score based on provider health and position in chain
+        const healthStatus = this.providerHealth.get(providerId);
+        let score = 100; // Base score
+
+        // Reduce score if fallback
+        if (isFallback) {
+          const chain = this.getProviderChain(rule);
+          const position = chain.indexOf(providerId);
+          score -= position * 10; // Reduce by 10 for each position away from primary
+        }
+
+        // Reduce score based on failure count
+        if (healthStatus?.failureCount) {
+          score -= healthStatus.failureCount * 5;
+        }
+
+        // Ensure score stays in valid range
+        score = Math.max(0, Math.min(100, score));
+
         return {
           provider: providerId,
           config: providerConfig,
           rule: rule,
-          isFallback: providerId !== rule.primaryProvider
+          isFallback,
+          score,
+          selectionReason
         };
       }
 

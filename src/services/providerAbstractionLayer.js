@@ -6,17 +6,21 @@ const OpenAIProvider = require('./providers/openaiProvider');
 const GeminiProvider = require('./providers/geminiProvider');
 const QwenProvider = require('./providers/qwenProvider');
 const GLMProvider = require('./providers/glmProvider');
+const DeepSeekProvider = require('./providers/deepseekProvider');
+const { getSelfHostedProvider } = require('./providers/selfHostedProvider');
 const logger = require('../utils/logger');
 
 // Phase 4: Routing Integration
 const providerRoutingService = require('./providerRoutingService');
 const tokenTrackingService = require('./tokenTrackingService');
 const { getHandoffService } = require('./sessionHandoffService');
+const { getRedactionService } = require('./dataRedactionService');
 const {
   SessionHandoffRequiredError,
   ProviderChainExhaustedError,
   RateLimitExceededError,
   ContextWindowExceededError,
+  EgressPolicyViolationError,
   shouldRetryWithFallback,
   fromProviderError
 } = require('../utils/errors/palErrors');
@@ -46,6 +50,9 @@ class ProviderAbstractionLayer {
     this.tokenTracker = tokenTrackingService;
     this.handoffService = getHandoffService();
     this.routingEnabled = true; // Can be disabled for backward compatibility
+
+    // ZDR-E0-S2: Data Redaction Service
+    this.redactionService = getRedactionService();
   }
 
   /**
@@ -120,6 +127,8 @@ class ProviderAbstractionLayer {
    * @param {boolean} config.streaming - Enable streaming (optional)
    * @param {Function} config.onChunk - Streaming callback (optional)
    * @param {boolean} config.enableFallback - Enable automatic fallback (default: true)
+   * @param {boolean} config.failClosed - Enable fail-closed routing mode (default: false, true for ZDR tenants)
+   * @param {Array<string>} config.allowedProviders - Providers allowed for this request (required if failClosed)
    * @returns {Promise<Object>} Normalized response with content, usage, and metadata
    */
   async callModel(skillRef, input, config = {}) {
@@ -367,6 +376,36 @@ class ProviderAbstractionLayer {
         break;
       case 'glm':
         providerInstance = new GLMProvider(config);
+        break;
+      case 'deepseek':
+        providerInstance = new DeepSeekProvider(config);
+        break;
+      case 'self_hosted':
+        // ZDR-E5-S1: Self-hosted inference adapter (vLLM/Ollama/Tabby)
+        const selfHosted = getSelfHostedProvider();
+        if (selfHosted.isConfigured()) {
+          providerInstance = selfHosted;
+          logger.info('Self-hosted inference provider initialized', {
+            endpoint: selfHosted.endpoint,
+            model: selfHosted.model
+          });
+        } else {
+          logger.warn('Self-hosted provider not configured (SELF_HOSTED_ENDPOINT missing) — skipping');
+          return;
+        }
+        break;
+      case 'opensource':
+        // ZDR-E5-S1: 'opensource' maps to self-hosted adapter when endpoint is configured
+        const opensourceAdapter = getSelfHostedProvider();
+        if (opensourceAdapter.isConfigured()) {
+          providerInstance = opensourceAdapter;
+          logger.info('Open-source model routed through self-hosted adapter', {
+            modelId: config.modelId
+          });
+        } else {
+          logger.warn('Opensource provider requires SELF_HOSTED_ENDPOINT — skipping');
+          return;
+        }
         break;
       default:
         throw new Error(`Unsupported provider: ${config.provider}`);
@@ -634,6 +673,7 @@ class ProviderAbstractionLayer {
   /**
    * Call provider with automatic fallback chain
    * Phase 4: Enhanced with circuit breaker and fallback logic
+   * ZDR-E0-S1: Added fail-closed routing mode to prevent egress policy violations
    * @private
    */
   async _callWithFallback(provider, agentType, skillRef, input, config) {
@@ -641,14 +681,49 @@ class ProviderAbstractionLayer {
     const attemptedProviders = [];
     const failures = [];
 
+    // ZDR-E0-S1: Fail-closed mode validation
+    const failClosed = config.failClosed || false;
+    const allowedProviders = config.allowedProviders || [];
+
+    // Validate primary provider against allow-list if fail-closed mode enabled
+    if (failClosed && allowedProviders.length > 0) {
+      const primaryProviderName = provider.config.provider;
+      if (!allowedProviders.includes(primaryProviderName)) {
+        logger.error('Egress policy violation: Primary provider not on allow-list', {
+          requestedProvider: primaryProviderName,
+          allowedProviders,
+          failClosed
+        });
+
+        throw new EgressPolicyViolationError(
+          primaryProviderName,
+          allowedProviders,
+          'Provider not on tenant allow-list'
+        );
+      }
+    }
+
     // Build list of providers to try
     const providersToTry = [provider];
 
     // Add fallback providers if routing is enabled
     if (this.routingEnabled && config.enableFallback !== false) {
       // Get fallback chain from routing service
-      const availableProviders = Array.from(this.providers.values())
+      let availableProviders = Array.from(this.providers.values())
         .filter(p => p.config.provider !== provider.config.provider);
+
+      // ZDR-E0-S1: Filter by allow-list if fail-closed mode enabled
+      if (failClosed && allowedProviders.length > 0) {
+        availableProviders = availableProviders.filter(p =>
+          allowedProviders.includes(p.config.provider)
+        );
+
+        logger.info('Fail-closed mode: Filtered fallback providers by allow-list', {
+          originalCount: Array.from(this.providers.values()).length - 1,
+          filteredCount: availableProviders.length,
+          allowedProviders
+        });
+      }
 
       // Limit to 3 total attempts
       while (providersToTry.length < 3 && availableProviders.length > 0) {
@@ -656,6 +731,14 @@ class ProviderAbstractionLayer {
         if (nextProvider) {
           providersToTry.push(nextProvider);
         }
+      }
+
+      // ZDR-E0-S1: Fail-closed mode with no fallback candidates available
+      if (failClosed && providersToTry.length === 1 && config.enableFallback !== false) {
+        logger.warn('Fail-closed mode: No fallback providers available on allow-list', {
+          primaryProvider: provider.config.provider,
+          allowedProviders
+        });
       }
     }
 
@@ -706,6 +789,46 @@ class ProviderAbstractionLayer {
           }
         };
 
+        // ZDR-E0-S2: Redact sensitive data BEFORE provider call (Guarantee G4)
+        let redactionResult = { redactionCount: 0, redactionDetails: [] };
+
+        if (config.enableRedaction !== false) { // Default: enabled
+          // Redact user prompt
+          if (params.prompt) {
+            const redacted = this.redactionService.redact(params.prompt);
+            params.prompt = redacted.redactedContent;
+            redactionResult.redactionCount += redacted.redactionCount;
+            redactionResult.redactionDetails.push(...redacted.redactionDetails);
+          }
+
+          // Redact system prompt
+          if (params.systemPrompt) {
+            const redacted = this.redactionService.redact(params.systemPrompt);
+            params.systemPrompt = redacted.redactedContent;
+            redactionResult.redactionCount += redacted.redactionCount;
+            redactionResult.redactionDetails.push(...redacted.redactionDetails);
+          }
+
+          // Redact messages (if present)
+          if (params.messages && Array.isArray(params.messages)) {
+            params.messages = params.messages.map(msg => {
+              if (msg.content) {
+                const redacted = this.redactionService.redact(msg.content);
+                redactionResult.redactionCount += redacted.redactionCount;
+                redactionResult.redactionDetails.push(...redacted.redactionDetails);
+                return { ...msg, content: redacted.redactedContent };
+              }
+              return msg;
+            });
+          }
+
+          logger.info('Content redacted before provider call', {
+            provider: providerKey,
+            redactionCount: redactionResult.redactionCount,
+            types: redactionResult.redactionDetails.map(d => d.type)
+          });
+        }
+
         // 4. Call the provider
         let response;
         if (config.streaming && currentProvider.provider.config.capabilities.supportsStreaming) {
@@ -736,7 +859,32 @@ class ProviderAbstractionLayer {
           );
         }
 
-        // 6. Return normalized response
+        // 6. ZDR-E7-S1: Record audit ledger entry (code-free, metadata only)
+        try {
+          const { getZDRService } = require('./zdrService');
+          const zdrService = getZDRService();
+          await zdrService.recordAuditEntry({
+            requestId: input.requestId || `pal-${Date.now()}`,
+            companyId: config.companyId || input.companyId || 'unknown',
+            endpoint: currentProvider.config.modelId,
+            provider: currentProvider.config.provider,
+            model: currentProvider.config.modelId,
+            trustTier: currentProvider.config.trustTier || 'standard_hosted',
+            residencyZone: currentProvider.config.residencyZone,
+            redactionCount: redactionResult.redactionCount,
+            redactionTypes: [...new Set(redactionResult.redactionDetails.map(d => d.type))],
+            bytesEgressed: Buffer.byteLength(JSON.stringify(params), 'utf8'),
+            tokensInput: response.usage?.inputTokens || 0,
+            tokensOutput: response.usage?.outputTokens || 0,
+            sessionId: config.sessionId,
+            agentType
+          });
+        } catch (auditError) {
+          // Audit recording failure must not block the response
+          logger.warn('ZDR audit entry recording failed', { error: auditError.message });
+        }
+
+        // 7. Return normalized response
         const result = {
           ...response,
           skillRef,
@@ -751,8 +899,18 @@ class ProviderAbstractionLayer {
           provider: {
             name: currentProvider.config.provider,
             model: currentProvider.config.modelId,
+            trustTier: currentProvider.config.trustTier || 'standard_hosted',
             attemptNumber: attemptedProviders.length + 1,
             fallbacksUsed: attemptedProviders.length
+          },
+          // ZDR-E0-S2: Include redaction metadata (Guarantee G4)
+          redaction: {
+            count: redactionResult.redactionCount,
+            applied: redactionResult.redactionCount > 0,
+            details: redactionResult.redactionDetails.map(d => ({
+              type: d.type,
+              count: d.count
+            }))
           }
         };
 
