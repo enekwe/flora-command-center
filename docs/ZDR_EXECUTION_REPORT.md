@@ -33,9 +33,9 @@
 | ZDR-E4-S2 | Trust-tier-first routing | ✅ Done | `922885a` | Pass (written) | G5 | R2 |
 | ZDR-E4-S3 | Data residency perimeter semantics | ✅ Done | `922885a` | Pass (written) | G5 | R7 |
 | **Epoch 5 — Self-Hosted Inference** | | | | | | |
-| ZDR-E5-S1 | Self-hosted provider adapter | 🔄 Code-complete, pending external | `ba59a12` | Pass (written) | G5 | R1 |
+| ZDR-E5-S1 | Self-hosted provider adapter + PAL wiring | ✅ Done | `bfb4e6a` | Pass (written) | G5 | R1 |
 | ZDR-E5-S2 | Open-weight coding model validation | 🔄 Pending external | — | — | G5 | R1 |
-| ZDR-E5-S3 | Deploy recipe for inference tier | 🔄 Pending external | — | — | G5 | R1 |
+| ZDR-E5-S3 | Deploy recipe for inference tier | ✅ Done (docs) | `965afa4` | N/A (docs) | G5 | R1 |
 | **Epoch 6 — Contracted Fallback** | | | | | | |
 | ZDR-E6-S1 | ZDR-contracted provider marking | 🔄 Code-complete, pending external | `6a0607c` | Pass (written) | G5 | — |
 | ZDR-E6-S2 | Zero-retention API headers | ✅ Done | `6a0607c` | Pass (written) | G5 | — |
@@ -48,14 +48,14 @@
 | ZDR-E8-S2 | ZDR toggle + policy view (via /zdr/policy) | ✅ Done | `c0530d9` | Pass (written) | G8 | — |
 | **Epoch 9 — Compliance** | | | | | | |
 | ZDR-E9-S1 | ZDR whitepaper + DPA language | ✅ Done (draft) | `f2bf404` | N/A (docs) | G8 | — |
-| ZDR-E9-S2 | Third-party pen test | 🔄 Pending external | — | — | G8 | — |
+| ZDR-E9-S2 | Third-party pen test scope + tracking | ✅ Done (docs) | `32e0423` | N/A (docs) | G8 | — |
 | **Epoch 10 — Conformance Testing** | | | | | | |
 | ZDR-E10-S1 | Adversarial egress tests in CI | ✅ Done | `0d3340b` | Pass (written) | G5 | — |
 | ZDR-E10-S2 | Chaos drills (outage/rate-limit) | ✅ Done | `0d3340b` | Pass (written) | G5 | — |
 | **Epoch 11 — Policy Engine** | | | | | | |
 | ZDR-E11-S1 | Per-tenant ZDR policy engine | ✅ Done | `afaa4c5` | Pass (written) | G5/G6 | — |
 | **Epoch 12 — Self-Owned Deploy** | | | | | | |
-| ZDR-E12-S1 | Customer VPC deployment | 🔄 Pending external (infra) | — | — | G5 | — |
+| ZDR-E12-S1 | Customer VPC deployment architecture | ✅ Done (docs) | `86cc9ba` | N/A (docs) | G5 | — |
 
 ---
 
@@ -80,9 +80,8 @@
 
 | Item | Blocked On | Status |
 |------|-----------|--------|
-| ZDR-E5-S1 production use | GPU inference endpoint deployment | Code-complete, env vars as placeholders |
+| ZDR-E5-S1 production use | GPU inference endpoint deployment | Code wired into PAL, deploy recipe ready |
 | ZDR-E5-S2 | Open-weight model quality validation | Needs benchmarking on code-gen tasks |
-| ZDR-E5-S3 | Infra recipe (container + GPU sizing) | Document in flora-devops |
 | ZDR-E6-S1 | DPA/zero-retention contracts with providers | Legal negotiation |
 | ZDR-E9-S2 | Third-party pen test | Vendor procurement |
 | ZDR-E12-S1 | Customer VPC deployment packaging | flora-devops IaC |
