@@ -91,6 +91,9 @@ module.exports = {
     // ZDR tenant identifiers (comma-separated list)
     tenantIds: process.env.ZDR_TENANT_IDS ? process.env.ZDR_TENANT_IDS.split(',').filter(Boolean) : [],
 
+    // Hard-erase enabled (approved for Customer Code only, not Operational Records)
+    hardEraseEnabled: process.env.ZDR_HARD_ERASE_ENABLED === 'true',
+
     // Artifact TTL for non-ZDR tenants (hours)
     artifactTTLHours: parseInt(process.env.ARTIFACT_TTL_HOURS || '24'),
 

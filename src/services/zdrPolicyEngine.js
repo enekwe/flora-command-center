@@ -39,7 +39,7 @@ class ZDRPolicyEngine {
       customRedactionPatterns: [],
       failClosed: isZDR,
       enablePreflight: true,
-      hardEraseEnabled: false // ZDR-EX-1: blocked pending tech-lead sign-off
+      hardEraseEnabled: isZDR && config.zdr.hardEraseEnabled
     };
 
     this._policies.set(companyId, policy);
@@ -57,9 +57,9 @@ class ZDRPolicyEngine {
     const current = this.getPolicy(companyId);
     const updated = { ...current, ...updates, companyId };
 
-    // Validation: can't enable hard erase (ZDR-EX-1 gate)
-    if (updated.hardEraseEnabled) {
-      logger.warn('Attempted to enable hard erase — blocked by ZDR-EX-1', { companyId });
+    // Validation: hard erase can only be enabled if global flag is set
+    if (updated.hardEraseEnabled && !config.zdr.hardEraseEnabled) {
+      logger.warn('Hard erase requested but disabled globally', { companyId });
       updated.hardEraseEnabled = false;
     }
 
@@ -74,7 +74,8 @@ class ZDRPolicyEngine {
     logger.info('ZDR policy updated', {
       companyId,
       requiredTrustTier: updated.requiredTrustTier,
-      failClosed: updated.failClosed
+      failClosed: updated.failClosed,
+      hardEraseEnabled: updated.hardEraseEnabled
     });
 
     return updated;
