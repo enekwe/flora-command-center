@@ -70,9 +70,28 @@ describe('ZDR-E10-S1: Adversarial egress conformance', () => {
     expect(blocked.reason).toContain('not on tenant allow-list');
   });
 
-  it('should never enable hard erase (ZDR-EX-1 gate)', () => {
+  it('should never enable hard erase when global flag is off (ZDR-EX-1 gate)', () => {
     const policy = engine.updatePolicy('test-tenant', { hardEraseEnabled: true });
     expect(policy.hardEraseEnabled).toBe(false);
+  });
+
+  it('should allow hard erase for ZDR tenant when global flag is enabled', () => {
+    // Temporarily enable the global flag
+    const config = require('../../../src/config');
+    const originalValue = config.zdr.hardEraseEnabled;
+    config.zdr.hardEraseEnabled = true;
+
+    try {
+      engine.updatePolicy('zdr-hard-erase', {
+        isZDR: true,
+        hardEraseEnabled: true
+      });
+      const policy = engine.getPolicy('zdr-hard-erase');
+      expect(policy.isZDR).toBe(true);
+      expect(policy.hardEraseEnabled).toBe(true);
+    } finally {
+      config.zdr.hardEraseEnabled = originalValue;
+    }
   });
 
   it('should reject invalid trust tier', () => {

@@ -177,7 +177,7 @@ router.get('/policy', async (req, res, next) => {
         isZDR,
         requiredTier: isZDR ? 'self_hosted' : 'standard_hosted',
         retention: isZDR ? 0 : null,
-        hardEraseEnabled: false, // ZDR-EX-1: blocked pending tech-lead sign-off
+        hardEraseEnabled: require('../config').zdr.hardEraseEnabled,
         failClosedRouting: isZDR,
         redactionEnforced: true
       }
