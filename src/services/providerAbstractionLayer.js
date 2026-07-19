@@ -8,6 +8,7 @@ const QwenProvider = require('./providers/qwenProvider');
 const GLMProvider = require('./providers/glmProvider');
 const DeepSeekProvider = require('./providers/deepseekProvider');
 const { getSelfHostedProvider } = require('./providers/selfHostedProvider');
+const SambanovaProvider = require('./providers/sambanovaProvider');
 const logger = require('../utils/logger');
 
 // Phase 4: Routing Integration
@@ -406,6 +407,14 @@ class ProviderAbstractionLayer {
           logger.warn('Opensource provider requires SELF_HOSTED_ENDPOINT — skipping');
           return;
         }
+        break;
+      case 'sambanova':
+        // ZDR-E6-S1: SambaNova Cloud (ZDR-contracted)
+        providerInstance = new SambanovaProvider(config);
+        logger.info('SambaNova provider initialized', {
+          trustTier: 'zdr_contracted',
+          model: config.modelId
+        });
         break;
       default:
         throw new Error(`Unsupported provider: ${config.provider}`);
