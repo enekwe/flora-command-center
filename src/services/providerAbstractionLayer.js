@@ -7,6 +7,7 @@ const GeminiProvider = require('./providers/geminiProvider');
 const QwenProvider = require('./providers/qwenProvider');
 const GLMProvider = require('./providers/glmProvider');
 const DeepSeekProvider = require('./providers/deepseekProvider');
+const { getSelfHostedProvider } = require('./providers/selfHostedProvider');
 const logger = require('../utils/logger');
 
 // Phase 4: Routing Integration
@@ -379,15 +380,33 @@ class ProviderAbstractionLayer {
       case 'deepseek':
         providerInstance = new DeepSeekProvider(config);
         break;
+      case 'self_hosted':
+        // ZDR-E5-S1: Self-hosted inference adapter (vLLM/Ollama/Tabby)
+        const selfHosted = getSelfHostedProvider();
+        if (selfHosted.isConfigured()) {
+          providerInstance = selfHosted;
+          logger.info('Self-hosted inference provider initialized', {
+            endpoint: selfHosted.endpoint,
+            model: selfHosted.model
+          });
+        } else {
+          logger.warn('Self-hosted provider not configured (SELF_HOSTED_ENDPOINT missing) — skipping');
+          return;
+        }
+        break;
       case 'opensource':
-        // ZDR-E0-S5: 'opensource' is a valid enum value but not a specific provider
-        // It's a category for self-hosted/open-source models
-        // For now, log a warning and skip initialization
-        logger.warn(`Skipping initialization of 'opensource' provider - requires specific provider implementation`, {
-          modelId: config.modelId,
-          provider: config.provider
-        });
-        return; // Skip adding to providers map
+        // ZDR-E5-S1: 'opensource' maps to self-hosted adapter when endpoint is configured
+        const opensourceAdapter = getSelfHostedProvider();
+        if (opensourceAdapter.isConfigured()) {
+          providerInstance = opensourceAdapter;
+          logger.info('Open-source model routed through self-hosted adapter', {
+            modelId: config.modelId
+          });
+        } else {
+          logger.warn('Opensource provider requires SELF_HOSTED_ENDPOINT — skipping');
+          return;
+        }
+        break;
       default:
         throw new Error(`Unsupported provider: ${config.provider}`);
     }
@@ -840,7 +859,32 @@ class ProviderAbstractionLayer {
           );
         }
 
-        // 6. Return normalized response
+        // 6. ZDR-E7-S1: Record audit ledger entry (code-free, metadata only)
+        try {
+          const { getZDRService } = require('./zdrService');
+          const zdrService = getZDRService();
+          await zdrService.recordAuditEntry({
+            requestId: input.requestId || `pal-${Date.now()}`,
+            companyId: config.companyId || input.companyId || 'unknown',
+            endpoint: currentProvider.config.modelId,
+            provider: currentProvider.config.provider,
+            model: currentProvider.config.modelId,
+            trustTier: currentProvider.config.trustTier || 'standard_hosted',
+            residencyZone: currentProvider.config.residencyZone,
+            redactionCount: redactionResult.redactionCount,
+            redactionTypes: [...new Set(redactionResult.redactionDetails.map(d => d.type))],
+            bytesEgressed: Buffer.byteLength(JSON.stringify(params), 'utf8'),
+            tokensInput: response.usage?.inputTokens || 0,
+            tokensOutput: response.usage?.outputTokens || 0,
+            sessionId: config.sessionId,
+            agentType
+          });
+        } catch (auditError) {
+          // Audit recording failure must not block the response
+          logger.warn('ZDR audit entry recording failed', { error: auditError.message });
+        }
+
+        // 7. Return normalized response
         const result = {
           ...response,
           skillRef,
@@ -855,6 +899,7 @@ class ProviderAbstractionLayer {
           provider: {
             name: currentProvider.config.provider,
             model: currentProvider.config.modelId,
+            trustTier: currentProvider.config.trustTier || 'standard_hosted',
             attemptNumber: attemptedProviders.length + 1,
             fallbacksUsed: attemptedProviders.length
           },
