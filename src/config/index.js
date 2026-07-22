@@ -194,7 +194,18 @@ module.exports = {
     // calls this via POST /appkit/generate). Registered under /skills/<ref>/prompts.
     generateSkillRef: process.env.APP_KIT_GENERATE_SKILL_REF || 'appkit-generate-code',
     generateTemperature: Number(process.env.APP_KIT_GENERATE_TEMPERATURE) || 0.2,
-    generateMaxTokens: Number(process.env.APP_KIT_GENERATE_MAX_TOKENS) || 8000
+    generateMaxTokens: Number(process.env.APP_KIT_GENERATE_MAX_TOKENS) || 8000,
+    // flora-devops base URL — where CC proxies a CC-project-originated build
+    // request (POST /requests below) on to the actual build engine.
+    devopsApiUrl: process.env.APP_KIT_DEVOPS_API_URL || 'http://flora-devops.railway.internal:4003',
+    // CC's OWN externally-reachable base URL, needed so /requests can hand
+    // devops a callbackUrl pointing back at itself. Deriving this from
+    // req.protocol/req.get('host') would be unreliable behind Railway's
+    // reverse proxy (TLS terminates at the edge; this app doesn't set
+    // 'trust proxy'), so it's an explicit config value like every other
+    // cross-service URL in this codebase, not inferred per-request.
+    selfBaseUrl: process.env.APP_KIT_SELF_BASE_URL || process.env.COMMAND_CENTER_PUBLIC_URL
+      || 'http://flora-command-center.railway.internal:4000'
   },
 
   // RBAC Permissions (required by User model)

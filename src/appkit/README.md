@@ -24,6 +24,7 @@ appkit/
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
+| `POST`   | `/requests` | API key | Kick off a build for an **existing CC project** — proxies to devops's `POST /api/appkit/builds` with `callbackUrl` pointed at `/status` below. This is CC's own intake for the UI/project-driven flow, distinct from flora-mcp-server's `app_kit/build` tool (which mints an ad-hoc `projectId` for IDE/CLI-originated requests that have no pre-existing CC project). |
 | `POST`   | `/status` | service key | Build phase callback → project timeline (`AppKitBuildLink`). |
 | `POST`   | `/tokens` | service key | Mint a scoped app token (devops calls this at `deploying`). |
 | `DELETE` | `/tokens/:buildId` | service key | Revoke a build's tokens (instant cutoff). |
@@ -46,6 +47,10 @@ APP_KIT_TOKEN_EXPIRATION=1h       # scoped-token lifetime
 APP_KIT_BROKER_TRUST_TIER=self_hosted
 APP_KIT_REDACT_BROKERED_DATA=true # outbound redaction on brokered data
 APP_KIT_SERVICE_KEY=              # shared secret for the internal status/token endpoints
+APP_KIT_DEVOPS_API_URL=           # flora-devops base URL (/requests proxies here)
+APP_KIT_SELF_BASE_URL=            # CC's own externally-reachable URL, for the callbackUrl
+                                   # /requests hands to devops (not inferred from the request —
+                                   # unreliable behind Railway's reverse proxy)
 ```
 
 ## Status

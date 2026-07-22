@@ -2,6 +2,7 @@
  * Flora App Kit — Command Center routes
  * Mounted at /api/command-center/appkit  (APP_KIT_PROJECT_CONTRACT.md §4)
  *
+ *   POST   /requests        kick off a build for an EXISTING CC project (CC → devops)
  *   POST   /status          build-status callback  → project timeline
  *   POST   /tokens          mint a scoped app token (called by devops at deploy)
  *   DELETE /tokens/:buildId  revoke a build's tokens
@@ -9,14 +10,33 @@
  *   POST   /generate         call the provider brain to generate app code (`generating` phase)
  */
 
+const crypto = require('crypto');
 const express = require('express');
+const axios = require('axios');
 const router = express.Router();
+const config = require('../../config');
 const logger = require('../../utils/logger');
 
 const tokenService = require('../services/appKitTokenService');
 const brokerService = require('../services/appKitBrokerService');
 const codeGenService = require('../services/appKitCodeGenService');
 const AppKitBuildLink = require('../models/AppKitBuildLink');
+
+/**
+ * User/project-facing auth — mirrors commandCenterRoutes.js's
+ * authenticateApiKey exactly (this endpoint sits alongside that same class of
+ * CC-facing API, unlike /status,/tokens,/generate below which are
+ * devops-internal service-to-service calls authenticated separately).
+ */
+function authenticateApiKey(req, res, next) {
+  const apiKey = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+
+  if (!apiKey && process.env.NODE_ENV === 'production') {
+    return res.status(401).json({ success: false, error: 'API key required' });
+  }
+
+  next();
+}
 
 /**
  * Service-to-service auth for internal endpoints (status/tokens).
@@ -55,6 +75,72 @@ async function authenticateApp(req, res, next) {
     res.status(err.statusCode || 401).json({ success: false, error: err.message });
   }
 }
+
+// POST /requests — kick off an App Kit build for an EXISTING Command Center
+// project (the UI/project-driven flow, as distinct from flora-mcp-server's
+// app_kit/build tool, which mints an ad-hoc projectId for IDE/CLI-originated
+// requests that have no pre-existing CC project). This is CC acting as the
+// true intake for its own project: it proxies to devops's POST /api/appkit/
+// builds on the caller's behalf, with callbackUrl pointed at CC's own
+// /status endpoint below, so the build's phase history lands in the SAME
+// AppKitBuildLink/project-timeline mechanism regardless of origin.
+router.post('/requests', authenticateApiKey, async (req, res, next) => {
+  try {
+    const {
+      projectId, userId, organizationId, companyId, appName, prompt, manifest, deployTarget
+    } = req.body || {};
+
+    if (!projectId || !userId || !organizationId || !appName || !prompt) {
+      return res.status(400).json({
+        success: false,
+        error: 'projectId, userId, organizationId, appName and prompt are required'
+      });
+    }
+
+    const requestId = `cc-req-${crypto.randomUUID()}`;
+
+    const response = await axios.post(
+      `${config.appKit.devopsApiUrl}/api/appkit/builds`,
+      {
+        projectId,
+        requestId,
+        userId,
+        organizationId,
+        companyId,
+        appName,
+        prompt,
+        manifest,
+        deployTarget,
+        callbackUrl: `${config.appKit.selfBaseUrl}/api/command-center/appkit/status`
+      },
+      {
+        timeout: 15000,
+        headers: { 'X-Service-Name': 'flora-command-center' }
+      }
+    );
+
+    logger.info('App Kit build request proxied to devops', {
+      buildId: response.data?.buildId, projectId, requestId, appName
+    });
+
+    res.status(202).json({
+      success: true,
+      buildId: response.data?.buildId,
+      status: response.data?.status,
+      phase: response.data?.phase,
+      projectId,
+      requestId
+    });
+  } catch (error) {
+    if (error.response) {
+      return res.status(error.response.status || 502).json({
+        success: false,
+        error: error.response.data?.error || 'App Kit build request failed at flora-devops'
+      });
+    }
+    next(error);
+  }
+});
 
 // POST /status — record a build phase transition into the project timeline.
 router.post('/status', authenticateService, async (req, res, next) => {

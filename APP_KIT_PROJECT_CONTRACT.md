@@ -29,8 +29,14 @@ data access, and records everything.** App Kit never moves the project out of CC
 ### 2.1 Build intake & status (project → devops → project)
 
 When a user's NL prompt in a CC project is classified as a **custom app**, CC hands
-the request to App Kit in flora-devops (`POST /api/appkit/builds`, see companion
-doc §4.1) and keeps the project in CC. App Kit calls back on each phase transition:
+the request to App Kit in flora-devops via `POST /api/command-center/appkit/requests`
+(implemented — see `src/appkit/routes/index.js`), which proxies to flora-devops's
+`POST /api/appkit/builds` (companion doc §4.1) on the caller's behalf, using the
+**real, existing** CC `projectId` — this keeps the project in CC. (A separate path,
+flora-mcp-server's `app_kit/build` MCP tool, lets an IDE/CLI agent kick off a build
+without a pre-existing CC project by minting an ad-hoc `projectId`; both paths
+converge on the same `/status` callback below, so either way the build is fully
+audited as a CC-tracked project.) App Kit calls back on each phase transition:
 
 ```
 POST {callbackUrl}   (a CC endpoint, e.g. /api/command-center/appkit/status)
