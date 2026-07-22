@@ -95,18 +95,23 @@ router.post('/status', authenticateService, async (req, res, next) => {
 // POST /tokens — mint a scoped app token for a build.
 router.post('/tokens', authenticateService, async (req, res, next) => {
   try {
-    const { buildId, projectId, requestId, organizationId, userId, companyId, scope } = req.body || {};
-    if (!buildId || !organizationId || !userId) {
+    const {
+      buildId, projectId, requestId, organizationId, userId, companyId, scope, deployTarget
+    } = req.body || {};
+    if (!buildId || !organizationId || !userId || !deployTarget) {
       return res.status(400).json({
         success: false,
-        error: 'buildId, organizationId and userId are required'
+        error: 'buildId, organizationId, userId and deployTarget are required'
       });
     }
     const result = await tokenService.mint({
-      buildId, projectId, requestId, organizationId, userId, companyId, scope
+      buildId, projectId, requestId, organizationId, userId, companyId, scope, deployTarget
     });
     res.status(201).json({ success: true, ...result });
   } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     next(error);
   }
 });

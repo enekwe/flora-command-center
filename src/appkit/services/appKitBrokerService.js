@@ -2,8 +2,13 @@ const crypto = require('crypto');
 const config = require('../../config');
 const logger = require('../../utils/logger');
 const monolithApiClient = require('../../clients/monolithApiClient');
-const dataRedactionService = require('../../services/dataRedactionService');
+const { getRedactionService } = require('../../services/dataRedactionService');
+const { getZDRPolicyEngine } = require('../../services/zdrPolicyEngine');
+const { getResidencyDisplay } = require('../../services/dataResidencyService');
 const ZDRAuditLedger = require('../../models/ZDRAuditLedger');
+
+const redactionService = getRedactionService();
+const zdrPolicyEngine = getZDRPolicyEngine();
 
 /**
  * App Kit Data Broker
@@ -14,9 +19,13 @@ const ZDRAuditLedger = require('../../models/ZDRAuditLedger');
  * operation, and this broker:
  *   1. enforces the app's manifest (the hard boundary),
  *   2. enforces tenant isolation,
- *   3. applies redaction before returning data,
+ *   3. enforces the tenant's ZDR policy against the app's own trust tier (the
+ *      app, deployed via Railway/Vercel, is the actual egress point — a ZDR
+ *      tenant's data must not flow to an app that isn't self_hosted),
  *   4. fetches from the monolith (single source of truth),
- *   5. writes a ZDRAuditLedger row per data touch.
+ *   5. applies redaction before returning data,
+ *   6. writes a ZDRAuditLedger row per data touch, including the app's
+ *      resolved residency/perimeter class.
  */
 
 // Operation → monolith call + the manifest requirement it needs.
@@ -123,13 +132,35 @@ async function execute(claims, body) {
     throw e;
   }
 
+  // (3) ZDR policy gate — the built app (deployed via claims.appTrustTier's
+  // deploy target) is the actual egress point for this tenant's data. A ZDR
+  // tenant requires self_hosted; an app on Railway/Vercel is standard_hosted
+  // and must be denied regardless of what the manifest declares.
+  const providerLabel = 'appkit'; // stable category so tenant allow-lists can gate App Kit as a whole
+  const policyVerdict = zdrPolicyEngine.checkProviderAllowed(
+    claims.companyId,
+    providerLabel,
+    claims.appTrustTier
+  );
+  if (!policyVerdict.allowed) {
+    logger.warn('App Kit broker denied by ZDR policy', {
+      buildId: claims.buildId,
+      companyId: claims.companyId,
+      appTrustTier: claims.appTrustTier,
+      reason: policyVerdict.reason
+    });
+    const e = new Error(`ZDR policy denies data access: ${policyVerdict.reason}`);
+    e.statusCode = 403;
+    throw e;
+  }
+
   // (4) Authoritative fetch from the monolith.
   let data = await opSpec.call(args);
 
-  // (3) Redaction before the data reaches the app.
+  // (5) Redaction before the data reaches the app.
   let redactionCount = 0;
   if (config.appKit.redactBrokeredData && data != null) {
-    const { redactedContent, redactionCount: count } = dataRedactionService.redact(
+    const { redactedContent, redactionCount: count } = redactionService.redact(
       JSON.stringify(data)
     );
     redactionCount = count || 0;
@@ -140,7 +171,7 @@ async function execute(claims, body) {
     }
   }
 
-  // (5) Audit the data touch (metadata only — no content).
+  // (6) Audit the data touch (metadata only — no content).
   await recordAudit(claims, op, data, redactionCount);
 
   return { data, redactionCount };
@@ -148,12 +179,20 @@ async function execute(claims, body) {
 
 async function recordAudit(claims, op, data, redactionCount) {
   try {
+    const appResidency = getResidencyDisplay({
+      trustTier: claims.appTrustTier,
+      residencyZone: claims.appResidencyZone
+    });
+
     await ZDRAuditLedger.appendEntry({
       requestId: `appkit:${claims.buildId}:${crypto.randomUUID()}`,
       companyId: claims.companyId || 'unknown',
       endpoint: `monolith:${op}`,
       provider: 'flora-monolith',
+      // Trust tier of the monolith fetch hop itself (Flora-controlled infra).
       trustTier: config.appKit.brokerTrustTier,
+      // Perimeter/residency of the actual data recipient — the built app.
+      residencyZone: `${appResidency.perimeterClass}:${appResidency.residencyZone}`,
       redactionCount,
       bytesEgressed: data != null ? Buffer.byteLength(JSON.stringify(data)) : 0,
       sessionId: claims.buildId,

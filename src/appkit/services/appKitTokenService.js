@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const config = require('../../config');
 const logger = require('../../utils/logger');
 const AppKitToken = require('../models/AppKitToken');
+const { validateSelfHostedClaim } = require('../../services/dataResidencyService');
 
 /**
  * App Kit Token Service
@@ -10,10 +11,23 @@ const AppKitToken = require('../models/AppKitToken');
  * Mints, verifies, and revokes the short-lived scoped tokens that a built app
  * presents to the Command Center data broker (APP_KIT_PROJECT_CONTRACT.md §3).
  *
- * The token is a JWT carrying the app's manifest scopes, bound to a build and a
+ * The token is a JWT carrying the app's manifest scopes AND the app's ZDR trust
+ * classification (derived from where it's deployed), bound to a build and a
  * tenant. Verification also checks the revocation registry so a build can be
  * killed and its data access cut off immediately.
  */
+
+/**
+ * Resolve the ZDR trust tier + residency zone implied by a build's deploy target.
+ * This describes the app that will RECEIVE brokered data — distinct from
+ * config.appKit.brokerTrustTier, which describes the CC->monolith fetch hop.
+ * Unmapped/unknown deploy targets get the least-trusted classification so a
+ * misconfigured or new target fails closed rather than open.
+ */
+function resolveAppTrustTier(deployTarget) {
+  const mapped = config.appKit.deployTargetTrustTiers[deployTarget];
+  return mapped || { trustTier: 'standard_hosted', residencyZone: 'unknown' };
+}
 
 /**
  * Mint a scoped app token for a build.
@@ -24,12 +38,27 @@ const AppKitToken = require('../models/AppKitToken');
  * @param {string} params.organizationId
  * @param {string} params.userId
  * @param {string} params.companyId
+ * @param {string} params.deployTarget - where the built app runs (e.g. 'railway')
  * @param {object} params.scope - { dataScopes: [...], systems: [...] }
  * @returns {Promise<{ token: string, jti: string, expiresIn: string }>}
  */
 async function mint(params) {
   const jti = crypto.randomUUID();
   const expiresIn = config.appKit.tokenExpiration;
+
+  const { trustTier, residencyZone } = resolveAppTrustTier(params.deployTarget);
+
+  // Defensive config check: refuse to mint a token that claims self_hosted trust
+  // for a deploy target actually classified as a public-cloud residency zone.
+  const claimCheck = validateSelfHostedClaim({ trustTier, residencyZone, provider: params.deployTarget });
+  if (!claimCheck.valid) {
+    logger.error('App Kit token mint refused: inconsistent trust claim', {
+      buildId: params.buildId, deployTarget: params.deployTarget, error: claimCheck.error
+    });
+    const e = new Error(`App Kit deploy-target trust configuration invalid: ${claimCheck.error}`);
+    e.statusCode = 500;
+    throw e;
+  }
 
   const claims = {
     jti,
@@ -40,7 +69,11 @@ async function mint(params) {
     organizationId: params.organizationId,
     userId: params.userId,
     companyId: params.companyId,
-    scope: params.scope || { dataScopes: [], systems: [] }
+    scope: params.scope || { dataScopes: [], systems: [] },
+    // The app's own trust classification — checked against tenant ZDR policy on
+    // every broker call (see appKitBrokerService).
+    appTrustTier: trustTier,
+    appResidencyZone: residencyZone
   };
 
   const token = jwt.sign(claims, config.JWT_SECRET, { expiresIn });
@@ -53,10 +86,15 @@ async function mint(params) {
     organizationId: params.organizationId,
     userId: params.userId,
     companyId: params.companyId,
+    deployTarget: params.deployTarget,
+    trustTier,
+    residencyZone,
     expiresAt: decoded?.exp ? new Date(decoded.exp * 1000) : undefined
   });
 
-  logger.info('App Kit scoped token minted', { buildId: params.buildId, jti });
+  logger.info('App Kit scoped token minted', {
+    buildId: params.buildId, jti, deployTarget: params.deployTarget, trustTier
+  });
   return { token, jti, expiresIn };
 }
 
@@ -104,4 +142,4 @@ async function revokeBuild(buildId) {
   return result.modifiedCount;
 }
 
-module.exports = { mint, verify, revokeBuild };
+module.exports = { mint, verify, revokeBuild, resolveAppTrustTier };

@@ -20,6 +20,17 @@ const appKitTokenSchema = new mongoose.Schema({
   userId: { type: String, required: true },
   companyId: { type: String, index: true },
 
+  // Where the app this token was issued to actually runs, and the ZDR trust
+  // classification that implies — set once at mint time from
+  // config.appKit.deployTargetTrustTiers. Persisted here (not just in the JWT)
+  // so the classification is inspectable/auditable without decoding a token.
+  deployTarget: { type: String },
+  trustTier: {
+    type: String,
+    enum: ['self_hosted', 'zdr_contracted', 'standard_hosted', 'unknown']
+  },
+  residencyZone: { type: String },
+
   revoked: { type: Boolean, default: false, index: true },
   revokedAt: { type: Date, default: null },
   expiresAt: { type: Date }

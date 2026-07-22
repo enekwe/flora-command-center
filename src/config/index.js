@@ -174,10 +174,22 @@ module.exports = {
   appKit: {
     // Lifetime of a scoped app token (minted when a build reaches `deploying`).
     tokenExpiration: process.env.APP_KIT_TOKEN_EXPIRATION || '1h',
-    // Trust tier recorded in the audit ledger for monolith (authoritative-source) reads.
+    // Trust tier recorded in the audit ledger for the monolith (authoritative-source)
+    // fetch hop itself — the monolith is genuinely Flora-controlled infra.
     brokerTrustTier: process.env.APP_KIT_BROKER_TRUST_TIER || 'self_hosted',
     // Apply outbound redaction to brokered data before it reaches a built app.
-    redactBrokeredData: process.env.APP_KIT_REDACT_BROKERED_DATA !== 'false'
+    redactBrokeredData: process.env.APP_KIT_REDACT_BROKERED_DATA !== 'false',
+    // Trust tier + residency zone implied by where a BUILT APP is deployed (the
+    // recipient of brokered data, not the monolith fetch hop above). Railway and
+    // Vercel are third-party public-cloud PaaS, not Flora- or customer-controlled
+    // infra, so they are 'standard_hosted' — this is what lets zdrPolicyEngine
+    // deny brokered data to a ZDR tenant's app deployed there (ZDR requires
+    // self_hosted). Unknown/unmapped deploy targets fall back to the same
+    // least-trusted default (see appKitTokenService.resolveAppTrustTier).
+    deployTargetTrustTiers: {
+      railway: { trustTier: 'standard_hosted', residencyZone: 'us_east' },
+      vercel: { trustTier: 'standard_hosted', residencyZone: 'us_east' }
+    }
   },
 
   // RBAC Permissions (required by User model)
