@@ -189,7 +189,12 @@ module.exports = {
     deployTargetTrustTiers: {
       railway: { trustTier: 'standard_hosted', residencyZone: 'us_east' },
       vercel: { trustTier: 'standard_hosted', residencyZone: 'us_east' }
-    }
+    },
+    // PAL skillRef for the `generating` phase (flora-devops's appKitGenerateService
+    // calls this via POST /appkit/generate). Registered under /skills/<ref>/prompts.
+    generateSkillRef: process.env.APP_KIT_GENERATE_SKILL_REF || 'appkit-generate-code',
+    generateTemperature: Number(process.env.APP_KIT_GENERATE_TEMPERATURE) || 0.2,
+    generateMaxTokens: Number(process.env.APP_KIT_GENERATE_MAX_TOKENS) || 8000
   },
 
   // RBAC Permissions (required by User model)

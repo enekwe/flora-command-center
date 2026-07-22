@@ -6,6 +6,7 @@
  *   POST   /tokens          mint a scoped app token (called by devops at deploy)
  *   DELETE /tokens/:buildId  revoke a build's tokens
  *   POST   /data            the governed runtime data broker (scoped-token auth)
+ *   POST   /generate         call the provider brain to generate app code (`generating` phase)
  */
 
 const express = require('express');
@@ -14,6 +15,7 @@ const logger = require('../../utils/logger');
 
 const tokenService = require('../services/appKitTokenService');
 const brokerService = require('../services/appKitBrokerService');
+const codeGenService = require('../services/appKitCodeGenService');
 const AppKitBuildLink = require('../models/AppKitBuildLink');
 
 /**
@@ -122,6 +124,28 @@ router.delete('/tokens/:buildId', authenticateService, async (req, res, next) =>
     const count = await tokenService.revokeBuild(req.params.buildId);
     res.json({ success: true, revoked: count });
   } catch (error) {
+    next(error);
+  }
+});
+
+// POST /generate — call the provider brain to generate app code for the
+// devops build pipeline's `generating` phase (FLORA_APP_KIT_ARCHITECTURE.md §4.2).
+router.post('/generate', authenticateService, async (req, res, next) => {
+  try {
+    const { buildId, appName, prompt, manifest } = req.body || {};
+    if (!buildId || !appName || !prompt) {
+      return res.status(400).json({
+        success: false,
+        error: 'buildId, appName and prompt are required'
+      });
+    }
+
+    const result = await codeGenService.generate({ buildId, appName, prompt, manifest });
+    res.json(result);
+  } catch (error) {
+    if (error.statusCode) {
+      return res.status(error.statusCode).json({ success: false, error: error.message });
+    }
     next(error);
   }
 });

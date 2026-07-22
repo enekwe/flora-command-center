@@ -14,8 +14,9 @@ appkit/
 │   ├── AppKitToken.js         # scoped-token revocation registry
 │   └── AppKitBuildLink.js     # project timeline of build phase transitions
 ├── services/
-│   ├── appKitTokenService.js  # mint / verify / revoke scoped app tokens
-│   └── appKitBrokerService.js # governed data broker (manifest + tenant + redact + audit)
+│   ├── appKitTokenService.js   # mint / verify / revoke scoped app tokens
+│   ├── appKitBrokerService.js  # governed data broker (manifest + tenant + redact + audit)
+│   └── appKitCodeGenService.js # calls the PAL provider brain for the `generating` phase
 └── routes/index.js            # /api/command-center/appkit
 ```
 
@@ -27,6 +28,7 @@ appkit/
 | `POST`   | `/tokens` | service key | Mint a scoped app token (devops calls this at `deploying`). |
 | `DELETE` | `/tokens/:buildId` | service key | Revoke a build's tokens (instant cutoff). |
 | `POST`   | `/data` | scoped app token | Governed runtime data broker for built apps. |
+| `POST`   | `/generate` | service key | Generate app code via PAL for the `generating` phase. Response shape documented in `appKitCodeGenService.js`. |
 
 ## The broker guarantees (per `/data` call)
 
