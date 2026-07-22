@@ -1,6 +1,7 @@
 # Flora App Kit — Command Center Project & Data-Broker Contract
 
-**Status:** Design proposal (not yet implemented)
+**Status:** Skeleton implemented — see `src/appkit/` (scoped-token mint/verify/revoke,
+the governed `/appkit/data` broker, and the `/appkit/status` build-callback sink).
 **Owning service:** `flora-command-center` (the Project & Collaboration plane)
 **Companion doc:** `flora-devops/FLORA_APP_KIT_ARCHITECTURE.md` (the build engine)
 

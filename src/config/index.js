@@ -168,6 +168,18 @@ module.exports = {
     notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:4003'
   },
 
+  // Flora App Kit — Command Center is the project/audit system of record and the
+  // runtime data broker for apps built by the devops App Kit module.
+  // See APP_KIT_PROJECT_CONTRACT.md.
+  appKit: {
+    // Lifetime of a scoped app token (minted when a build reaches `deploying`).
+    tokenExpiration: process.env.APP_KIT_TOKEN_EXPIRATION || '1h',
+    // Trust tier recorded in the audit ledger for monolith (authoritative-source) reads.
+    brokerTrustTier: process.env.APP_KIT_BROKER_TRUST_TIER || 'self_hosted',
+    // Apply outbound redaction to brokered data before it reaches a built app.
+    redactBrokeredData: process.env.APP_KIT_REDACT_BROKERED_DATA !== 'false'
+  },
+
   // RBAC Permissions (required by User model)
   PERMISSIONS: {
     'read:command-center': ['admin', 'gp', 'analyst'],
