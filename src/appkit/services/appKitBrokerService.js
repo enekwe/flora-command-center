@@ -73,6 +73,47 @@ const OPS = {
 };
 
 /**
+ * Redact string leaf values in place through the object tree, never handing
+ * the redaction service a JSON-serialized blob. dataRedactionService's regexes
+ * (e.g. genericApiKey) are written for free text and can consume surrounding
+ * quote/colon/key characters when applied to a full JSON string — turning
+ * `"apiKey":"secret..."` into a bare `"[API_KEY_REDACTED]"` with no key name,
+ * which breaks JSON.parse. Redacting only the isolated string values sidesteps
+ * that entirely: there is never any JSON structure in the text being matched.
+ */
+function redactDeep(value) {
+  if (value == null) return { value, count: 0 };
+
+  if (typeof value === 'string') {
+    const { redactedContent, redactionCount } = redactionService.redact(value);
+    return { value: redactedContent, count: redactionCount };
+  }
+
+  if (Array.isArray(value)) {
+    let count = 0;
+    const arr = value.map((item) => {
+      const r = redactDeep(item);
+      count += r.count;
+      return r.value;
+    });
+    return { value: arr, count };
+  }
+
+  if (typeof value === 'object') {
+    let count = 0;
+    const obj = {};
+    for (const [key, v] of Object.entries(value)) {
+      const r = redactDeep(v);
+      count += r.count;
+      obj[key] = r.value;
+    }
+    return { value: obj, count };
+  }
+
+  return { value, count: 0 }; // numbers, booleans, etc. — nothing to redact
+}
+
+/**
  * Does the token's manifest scope permit this op against this resource id?
  */
 function isAllowed(scope, opSpec, resourceId) {
@@ -160,15 +201,9 @@ async function execute(claims, body) {
   // (5) Redaction before the data reaches the app.
   let redactionCount = 0;
   if (config.appKit.redactBrokeredData && data != null) {
-    const { redactedContent, redactionCount: count } = redactionService.redact(
-      JSON.stringify(data)
-    );
-    redactionCount = count || 0;
-    try {
-      data = JSON.parse(redactedContent);
-    } catch (_) {
-      data = redactedContent; // redaction broke JSON structure — return sanitized string
-    }
+    const redacted = redactDeep(data);
+    data = redacted.value;
+    redactionCount = redacted.count;
   }
 
   // (6) Audit the data touch (metadata only — no content).
