@@ -115,7 +115,14 @@ router.post('/requests', authenticateApiKey, async (req, res, next) => {
       },
       {
         timeout: 15000,
-        headers: { 'X-Service-Name': 'flora-command-center' }
+        headers: {
+          'X-Service-Name': 'flora-command-center',
+          // devops now requires this on every /api/appkit/* call — same shared
+          // secret this service already expects on its OWN /status,/tokens,
+          // /generate endpoints (see authenticateService above). Must be set
+          // to the same value on both services.
+          ...(process.env.APP_KIT_SERVICE_KEY ? { 'X-API-Key': process.env.APP_KIT_SERVICE_KEY } : {})
+        }
       }
     );
 
