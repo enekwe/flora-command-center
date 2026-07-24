@@ -42,7 +42,8 @@ const CLOUD_REGIONS = {
   eu_central: { label: 'EU Central', gdpr: true },
   ap_southeast: { label: 'AP Southeast', gdpr: false },
   ca_central: { label: 'CA Central', gdpr: false },
-  china: { label: 'China', gdpr: false, specialCompliance: true }
+  china: { label: 'China', gdpr: false, specialCompliance: true },
+  sambanova_us: { label: 'SambaNova Cloud (US)', gdpr: false }
 };
 
 /**

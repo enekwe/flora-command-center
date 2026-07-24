@@ -177,11 +177,14 @@ const providerConfigSchema = new mongoose.Schema({
   residencyZone: {
     type: String,
     enum: {
-      values: ['customer_perimeter', 'flora_perimeter', 'us_east', 'us_west', 'eu_west', 'ap_southeast', 'china'],
+      values: ['customer_perimeter', 'flora_perimeter', 'us_east', 'us_west', 'eu_west', 'ap_southeast', 'china', 'sambanova_us'],
       message: '{VALUE} is not a valid residency zone'
     },
     default: 'flora_perimeter',
-    description: 'Where provider actually runs (customer perimeter vs cloud region)'
+    description: 'Where provider actually runs (customer perimeter vs cloud region). ' +
+      '"sambanova_us" is a distinct zone (not a generic AWS region) because SambaNova is a ' +
+      'zdr_contracted third party running on their own US-based RDU infrastructure, not ' +
+      'Flora-owned cloud capacity.'
   },
 
   // Status and Control
