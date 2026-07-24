@@ -356,4 +356,41 @@ router.get('/health', (req, res) => {
   });
 });
 
+// ============================================================================
+// PROVIDER STATUS (PAL)
+// ============================================================================
+
+/**
+ * GET /api/command-center/providers
+ * Lists every LLM provider/model currently loaded into the Provider
+ * Abstraction Layer (PAL) — i.e. what actually made it in from the
+ * ProviderConfig collection, as opposed to what's merely defined in code.
+ * PAL initializes lazily on first use elsewhere in the service; calling
+ * this endpoint also forces that initialization if it hasn't happened yet,
+ * so this doubles as a way to warm PAL up after a deploy or a seed script.
+ * Never returns apiKey values — getAvailableProviders() only exposes
+ * provider/model/status/capabilities/health/usage.
+ */
+router.get('/providers', async (req, res) => {
+  try {
+    const { getPAL } = require('../services/providerAbstractionLayer');
+    const pal = getPAL();
+
+    if (pal.providers.size === 0) {
+      await pal.initialize();
+    }
+
+    res.json({
+      success: true,
+      count: pal.providers.size,
+      providers: pal.getAvailableProviders()
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;
