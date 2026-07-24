@@ -17,7 +17,7 @@ const providerConfigSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Provider name is required'],
     enum: {
-      values: ['anthropic', 'openai', 'gemini', 'opensource', 'deepseek', 'qwen', 'glm'],
+      values: ['anthropic', 'openai', 'gemini', 'opensource', 'deepseek', 'qwen', 'glm', 'sambanova', 'self_hosted'],
       message: '{VALUE} is not a supported provider'
     },
     index: true

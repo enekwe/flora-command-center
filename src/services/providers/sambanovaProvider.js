@@ -26,27 +26,33 @@ class SambanovaProvider {
       throw new Error('SambaNova API key is required');
     }
 
-    // Supported models
+    // Supported models — SambaNova Cloud's current catalog. Mirrors
+    // src/config/providers/sambanova.js; keep both in sync when SambaNova
+    // adds/retires models (see docs.sambanova.ai get-started/supported-models).
     this.models = {
-      'llama-3.1-405b': {
+      'Meta-Llama-3.3-70B-Instruct': {
         contextWindow: 128000,
-        costPerMToken: { input: 5.0, output: 15.0 }
+        costPerMToken: { input: 0.60, output: 1.20 }
       },
-      'llama-3.1-70b': {
+      'DeepSeek-V3.1': {
         contextWindow: 128000,
-        costPerMToken: { input: 0.60, output: 0.60 }
+        costPerMToken: { input: 3.00, output: 4.50 }
       },
-      'llama-3.1-8b': {
+      'DeepSeek-V3.2': {
+        contextWindow: 32000,
+        costPerMToken: { input: 3.00, output: 4.50 }
+      },
+      'gpt-oss-120b': {
         contextWindow: 128000,
-        costPerMToken: { input: 0.20, output: 0.20 }
+        costPerMToken: { input: 0.22, output: 0.59 }
       },
-      'qwen-2.5-coder-32b': {
-        contextWindow: 32768,
-        costPerMToken: { input: 0.40, output: 0.40 }
+      'gemma-4-31B-it': {
+        contextWindow: 128000,
+        costPerMToken: { input: 0.22, output: 0.59 }
       },
-      'deepseek-coder-33b': {
-        contextWindow: 16384,
-        costPerMToken: { input: 0.35, output: 0.35 }
+      'MiniMax-M2.7': {
+        contextWindow: 192000,
+        costPerMToken: { input: 0.60, output: 2.40 }
       }
     };
 
@@ -64,19 +70,19 @@ class SambanovaProvider {
    * Call SambaNova API with OpenAI-compatible format
    */
   async call(messages, options = {}) {
-    const model = options.model || 'llama-3.1-70b';
+    const model = options.model || 'Meta-Llama-3.3-70B-Instruct';
     const temperature = options.temperature ?? 0.7;
     const maxTokens = options.maxTokens || options.max_tokens || 2000;
 
+    // NOTE: zero-retention is a contractual (DPA) guarantee with SambaNova,
+    // not a per-request API parameter — their OpenAI-compatible endpoint has
+    // no documented retention/training-use fields, so none are sent here.
     const requestBody = {
       model,
       messages,
       temperature,
       max_tokens: maxTokens,
-      stream: false,
-      // ZDR headers - request zero-retention
-      user_data_retention: 'none',
-      training_data_use: 'never'
+      stream: false
     };
 
     // Add optional parameters

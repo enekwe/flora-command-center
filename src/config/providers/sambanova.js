@@ -3,7 +3,12 @@
  *
  * Trust Tier: zdr_contracted
  * DPA Status: Pending negotiation
- * Models: Llama 3.1, Qwen-Coder, DeepSeek-Coder
+ *
+ * Model catalog reflects SambaNova Cloud's current live offering as of this
+ * writing (https://docs.sambanova.ai — get-started/supported-models and
+ * get-started/pricing). SambaNova runs open-weight models on their own RDU
+ * chips; the lineup changes as they add/retire models, so re-check those
+ * pages before adding a model that isn't listed here.
  */
 
 module.exports = {
@@ -17,57 +22,71 @@ module.exports = {
   residencyZone: 'sambanova_us',
   zdrCompliant: true,
 
-  // API Configuration
+  // API Configuration — OpenAI-compatible; POST {baseURL}/chat/completions
   apiKey: process.env.SAMBANOVA_API_KEY,
   baseURL: process.env.SAMBANOVA_API_URL || 'https://api.sambanova.ai/v1',
 
   // Zero-Retention Contract
+  // NOTE: this tracks Flora's own compliance/legal status for the SambaNova
+  // relationship. It is NOT enforced by any SambaNova API parameter — their
+  // OpenAI-compatible endpoint has no documented request-level retention
+  // flag, so zero-retention is a contractual (DPA) guarantee, not something
+  // this code can request per-call. Update dpaStatus/zeroRetentionVerified
+  // once the DPA is actually signed and verified.
   dpaStatus: 'pending', // Update to 'active' once signed
   dpaEvidenceLink: process.env.SAMBANOVA_DPA_URL || null,
   zeroRetentionVerified: false, // Update to true once verified
 
-  // Supported Models
+  // Supported Models (SambaNova Cloud, current catalog)
   models: [
     {
-      id: 'llama-3.1-405b',
-      name: 'Llama 3.1 405B',
+      id: 'Meta-Llama-3.3-70B-Instruct',
+      name: 'Llama 3.3 70B Instruct',
+      contextWindow: 128000,
+      capabilities: ['chat', 'completion', 'reasoning', 'code'],
+      costPerMToken: { input: 0.60, output: 1.20 }
+    },
+    {
+      id: 'DeepSeek-V3.1',
+      name: 'DeepSeek V3.1',
+      contextWindow: 128000,
+      capabilities: ['chat', 'completion', 'reasoning', 'code'],
+      costPerMToken: { input: 3.00, output: 4.50 }
+    },
+    {
+      id: 'DeepSeek-V3.2',
+      name: 'DeepSeek V3.2',
+      contextWindow: 32000,
+      capabilities: ['chat', 'completion', 'reasoning', 'code'],
+      costPerMToken: { input: 3.00, output: 4.50 }
+    },
+    {
+      id: 'gpt-oss-120b',
+      name: 'GPT-OSS 120B',
       contextWindow: 128000,
       capabilities: ['chat', 'completion', 'reasoning'],
-      costPerMToken: { input: 5.0, output: 15.0 }
+      costPerMToken: { input: 0.22, output: 0.59 }
     },
     {
-      id: 'llama-3.1-70b',
-      name: 'Llama 3.1 70B',
+      id: 'gemma-4-31B-it',
+      name: 'Gemma 4 31B (Vision)',
       contextWindow: 128000,
-      capabilities: ['chat', 'completion', 'code'],
-      costPerMToken: { input: 0.60, output: 0.60 }
+      capabilities: ['chat', 'completion', 'vision'],
+      costPerMToken: { input: 0.22, output: 0.59 }
+      // Supports text, image, and video input. Audio input is NOT supported.
     },
     {
-      id: 'llama-3.1-8b',
-      name: 'Llama 3.1 8B',
-      contextWindow: 128000,
+      id: 'MiniMax-M2.7',
+      name: 'MiniMax M2.7',
+      contextWindow: 192000,
       capabilities: ['chat', 'completion'],
-      costPerMToken: { input: 0.20, output: 0.20 }
-    },
-    {
-      id: 'qwen-2.5-coder-32b',
-      name: 'Qwen 2.5 Coder 32B',
-      contextWindow: 32768,
-      capabilities: ['code', 'chat', 'completion'],
-      costPerMToken: { input: 0.40, output: 0.40 },
-      recommended: true // Best for code generation
-    },
-    {
-      id: 'deepseek-coder-33b',
-      name: 'DeepSeek Coder 33B',
-      contextWindow: 16384,
-      capabilities: ['code', 'completion'],
-      costPerMToken: { input: 0.35, output: 0.35 }
+      costPerMToken: { input: 0.60, output: 2.40 },
+      recommended: true // Cheapest cached-input pricing; strong default for high-volume chat
     }
   ],
 
-  // Default Model Selection
-  defaultModel: 'qwen-2.5-coder-32b', // Best for Flora's code use case
+  // Default Model Selection — matches SambaNova's own quickstart example
+  defaultModel: 'Meta-Llama-3.3-70B-Instruct',
 
   // Rate Limits (adjust based on SambaNova contract)
   rateLimit: {

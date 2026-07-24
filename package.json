@@ -11,7 +11,8 @@
     "lint": "eslint src/",
     "docker:build": "docker build -t flora-command-center .",
     "docker:run": "docker run -p 4000:4000 --env-file .env flora-command-center",
-    "migrate": "node src/migrations/run.js"
+    "migrate": "node src/migrations/run.js",
+    "seed:sambanova": "node scripts/seedSambaNovaConfig.js"
   },
   "keywords": [
     "command-center",
