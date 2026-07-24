@@ -168,6 +168,46 @@ module.exports = {
     notificationServiceUrl: process.env.NOTIFICATION_SERVICE_URL || 'http://localhost:4003'
   },
 
+  // Flora App Kit — Command Center is the project/audit system of record and the
+  // runtime data broker for apps built by the devops App Kit module.
+  // See APP_KIT_PROJECT_CONTRACT.md.
+  appKit: {
+    // Lifetime of a scoped app token (minted when a build reaches `deploying`).
+    tokenExpiration: process.env.APP_KIT_TOKEN_EXPIRATION || '1h',
+    // Trust tier recorded in the audit ledger for the monolith (authoritative-source)
+    // fetch hop itself — the monolith is genuinely Flora-controlled infra.
+    brokerTrustTier: process.env.APP_KIT_BROKER_TRUST_TIER || 'self_hosted',
+    // Apply outbound redaction to brokered data before it reaches a built app.
+    redactBrokeredData: process.env.APP_KIT_REDACT_BROKERED_DATA !== 'false',
+    // Trust tier + residency zone implied by where a BUILT APP is deployed (the
+    // recipient of brokered data, not the monolith fetch hop above). Railway and
+    // Vercel are third-party public-cloud PaaS, not Flora- or customer-controlled
+    // infra, so they are 'standard_hosted' — this is what lets zdrPolicyEngine
+    // deny brokered data to a ZDR tenant's app deployed there (ZDR requires
+    // self_hosted). Unknown/unmapped deploy targets fall back to the same
+    // least-trusted default (see appKitTokenService.resolveAppTrustTier).
+    deployTargetTrustTiers: {
+      railway: { trustTier: 'standard_hosted', residencyZone: 'us_east' },
+      vercel: { trustTier: 'standard_hosted', residencyZone: 'us_east' }
+    },
+    // PAL skillRef for the `generating` phase (flora-devops's appKitGenerateService
+    // calls this via POST /appkit/generate). Registered under /skills/<ref>/prompts.
+    generateSkillRef: process.env.APP_KIT_GENERATE_SKILL_REF || 'appkit-generate-code',
+    generateTemperature: Number(process.env.APP_KIT_GENERATE_TEMPERATURE) || 0.2,
+    generateMaxTokens: Number(process.env.APP_KIT_GENERATE_MAX_TOKENS) || 8000,
+    // flora-devops base URL — where CC proxies a CC-project-originated build
+    // request (POST /requests below) on to the actual build engine.
+    devopsApiUrl: process.env.APP_KIT_DEVOPS_API_URL || 'http://flora-devops.railway.internal:4003',
+    // CC's OWN externally-reachable base URL, needed so /requests can hand
+    // devops a callbackUrl pointing back at itself. Deriving this from
+    // req.protocol/req.get('host') would be unreliable behind Railway's
+    // reverse proxy (TLS terminates at the edge; this app doesn't set
+    // 'trust proxy'), so it's an explicit config value like every other
+    // cross-service URL in this codebase, not inferred per-request.
+    selfBaseUrl: process.env.APP_KIT_SELF_BASE_URL || process.env.COMMAND_CENTER_PUBLIC_URL
+      || 'http://flora-command-center.railway.internal:4000'
+  },
+
   // RBAC Permissions (required by User model)
   PERMISSIONS: {
     'read:command-center': ['admin', 'gp', 'analyst'],
